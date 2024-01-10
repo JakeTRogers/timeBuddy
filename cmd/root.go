@@ -342,7 +342,7 @@ Examples:
 
 Learn More:
   To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
-	Version: "v1.0.0",
+	Version: "v1.0.1",
 	Args: func(cmd *cobra.Command, args []string) error {
 		// if the --date flag was provided, validate it
 		if cmd.Flags().Changed("date") {
