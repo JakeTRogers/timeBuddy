@@ -1,4 +1,4 @@
-module timeBuddy
+module github.com/JakeTRogers/timeBuddy
 
 go 1.21
 
