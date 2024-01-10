@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
-	"timeBuddy/logger"
 
+	"github.com/JakeTRogers/timeBuddy/logger"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/spf13/cobra"
@@ -342,7 +342,7 @@ Examples:
 
 Learn More:
   To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
-	Version: "v1.0.1",
+	Version: "v1.1.1",
 	Args: func(cmd *cobra.Command, args []string) error {
 		// if the --date flag was provided, validate it
 		if cmd.Flags().Changed("date") {
@@ -417,4 +417,10 @@ func init() {
 	rootCmd.PersistentFlags().CountP("verbose", "v", "``increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace")
 	rootCmd.Flags().BoolP("exclude-local", "x", false, "disable default behavior of including local timezone in output")
 	rootCmd.Flags().StringArrayVarP(&timezones, "timezone", "z", []string{}, "``timezone to use for time conversion. Accepts timezone name, like America/New_York. Can be used multiple times.")
+	err := rootCmd.RegisterFlagCompletionFunc("timezone", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return timezonesAll, cobra.ShellCompDirectiveDefault
+	})
+	if err != nil {
+		l.Error().Err(err).Send()
+	}
 }

@@ -1,10 +1,12 @@
 # timeBuddy
 
-CLI based version of World Time Buddy
+CLI based version of [World Time Buddy](https://www.worldtimebuddy.com/)
 
 ## Description
 
-TimeBuddy is a CLI tool, implemented in Go, that mimics the functionality of World Time Buddy. It accepts a list of timezone and displays the current time in each of these timezones in a tabular format. The program is aware of daylight savings time and adjusts the time for each timezone accordingly. A specific date can also be provided to view the time in each timezone for that date.
+TimeBuddy is a CLI tool, implemented in Go, that mimics the functionality of World Time Buddy. It accepts a list of timezones and displays the current time for each in a tabular format. You can use `timeBuddy list` to view a list of all available timezones. Alternatively, you can setup the shell autocompletion script(`timeBuddy completion --help`) for your preferred shell and use tab completion to select the timezones you are interested in.
+
+The program is aware of daylight savings time and adjusts the time for each timezone accordingly. A specific date can also be provided to view the time in each timezone for that date.
 
 The last used timezones, color, and time format preferences are saved in a YAML formatted configuration file. This feature ensures that you need to
 specify your preferred time zones only once. The order in which you specify the time zones is retained and reflected in the table output.
@@ -12,7 +14,7 @@ specify your preferred time zones only once. The order in which you specify the 
 - Windows: `$HOME/AppData/Roaming/.timeBuddy.yaml`
 - Linux/macOS: `~/.config/.timeBuddy.yaml`
 
-If the configuration file does not exist, it will be created. The configuration file follows the format:
+If the configuration file does not exist, it will be created. The configuration file has the following format:
 
 ```yaml
 color: true
@@ -35,7 +37,7 @@ twelve-hour: false
 ## Installation
 
 1. Download the binary for your preferred platform from the [releases](https://github.com/JakeTRogers/timeBuddy/releases) page
-2. Extract the archive. It can contains the markdown generated documentation and the binary
+2. Extract the archive. It contains this readme, a copy of the Apache 2.0 license, and the timeBuddy binary.
 3. Copy the binary to a directory in your `$PATH`. i.e. `/usr/local/bin`
 
 ## Usage
@@ -61,4 +63,17 @@ Flags:
       --version         version for timeBuddy
 
 Use "timeBuddy [command] --help" for more information about a command.
+```
+
+## Examples
+
+```bash
+# Display the current time in New York, Vilnius, and Sydney
+timeBuddy -z America/New_York -z Europe/Vilnius -z Australia/Sydney
+
+# Display the current time in 12-hour format and in color using the last used timezones
+timeBuddy -t -c
+
+# Display the time table of your last used timezones, color, and time format for a specific date
+timeBuddy -d 2024-06-06
 ```
