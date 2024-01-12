@@ -54,10 +54,11 @@ func initializeConfig(cmd *cobra.Command) error {
 	v.SetConfigType(configType)
 	configPath := ""
 	if runtime.GOOS == "windows" {
-		configPath = filepath.Join(os.Getenv("HOME"), "AppData", "Roaming")
+		configPath = os.Getenv("APPDATA")
 	} else {
 		configPath = filepath.Join(os.Getenv("HOME"), ".config")
 	}
+	l.Debug().Str("configPath", configPath).Send()
 	v.AddConfigPath(configPath)
 
 	// Attempt to read the config file
