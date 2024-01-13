@@ -311,8 +311,9 @@ func deduplicateSlice(s []string) []string {
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "timeBuddy",
-	Short: "CLI version of World Time Buddy",
+	Use:     "timeBuddy",
+	Version: "v1.1.3",
+	Short:   "CLI version of World Time Buddy",
 	Long: `timeBuddy is a Command Line Interface (CLI) tool designed to display the current time across multiple time zones. This
 tool is particularly useful for scheduling meetings with participants in various time zones. By default, timeBuddy
 includes your local time zone in its output. You can exclude your local time zone using the --exclude-local flag.
@@ -343,7 +344,6 @@ Examples:
 
 Learn More:
   To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
-	Version: "v1.1.1",
 	Args: func(cmd *cobra.Command, args []string) error {
 		// if the --date flag was provided, validate it
 		if cmd.Flags().Changed("date") {
