@@ -1,3 +1,9 @@
+## v1.1.11 (2025-02-23)
+
+### Fix
+
+- **deps**: bump github.com/spf13/cobra from 1.8.0 to 1.9.1
+
 ## v1.1.10 (2025-02-23)
 
 ### Fix
