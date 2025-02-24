@@ -3,7 +3,7 @@ default_install_hook_types:
   - commit-msg
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 2c9f875913ee60ca25ce70243dc24d5b6415598c  # frozen: v4.6.0
+    rev: cef0300fd0fc4d2a87a85fa2093c6b283ea36f4b  # frozen: v5.0.0
     hooks:
       - id: check-added-large-files
       - id: check-json
@@ -12,11 +12,11 @@ repos:
       - id: trailing-whitespace
         args: [ --markdown-linebreak-ext=md ]
   - repo: https://github.com/golangci/golangci-lint
-    rev: 2059b18a39d559552839476ba78ce6acaa499b43  # frozen: v1.59.0
+    rev: 0a603e49e5e9870f5f9f2035bcbe42cd9620a9d5  # frozen: v1.64.5
     hooks:
       - id: golangci-lint-full
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: e9aa5d979ea6fd14dcf59c6bd3836bef17d386c1  # frozen: v3.27.0
+    rev: a330ac72b48927d99ea01ade8982236d4aa54f40  # frozen: v4.2.2
     hooks:
       - id: commitizen
         stages:
