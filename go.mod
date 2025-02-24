@@ -1,6 +1,6 @@
 module github.com/JakeTRogers/timeBuddy
 
-go 1.21
+go 1.23
 
 require (
 	github.com/jedib0t/go-pretty/v6 v6.6.6
