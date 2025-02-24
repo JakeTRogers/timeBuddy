@@ -1,3 +1,9 @@
+## v1.1.10 (2025-02-23)
+
+### Fix
+
+- **deps**: bump github.com/spf13/viper from 1.18.2 to 1.19.0
+
 ## v1.1.9 (2024-05-27)
 
 ### Fix
