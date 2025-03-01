@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -22,6 +23,7 @@ import (
 
 var (
 	colorEnabled               bool
+	highlight                  string
 	twelveHourEnabled          bool
 	date                       string
 	timezones                  []string
@@ -238,6 +240,78 @@ func formatRowLabel(z timezoneDetail, date, offset string) string {
 	return rowLabel
 }
 
+// parseOffset parses the input string to extract the hour and offset.
+// It supports formats like "hour+offset" and "hour-offset".
+// If the input does not contain a "+" or "-", it assumes the input is just the hour and sets the offset to 0 (UTC time).
+// It returns the parsed hour, offset, and any error encountered during parsing.
+func parseOffset(input string) (hour int, offset int, err error) {
+	if strings.Contains(input, "+") {
+		parts := strings.Split(input, "+")
+		if len(parts) != 2 {
+			return 0, 0, fmt.Errorf("invalid format, expected hour+offset")
+		}
+		hour, _ = strconv.Atoi(parts[0])
+		offset, err = strconv.Atoi(parts[1])
+	} else if strings.Contains(input, "-") {
+		parts := strings.Split(input, "-")
+		if len(parts) != 2 {
+			return 0, 0, fmt.Errorf("invalid format, expected hour-offset")
+		}
+		hour, _ = strconv.Atoi(parts[0])
+		offset, err = strconv.Atoi("-" + parts[1])
+	} else {
+		hour, err = strconv.Atoi(input)
+		offset = 0 // Local time
+	}
+	return hour, offset, err
+}
+
+// parseHighlightFlag parses the highlight flag and returns the index of the
+// highlighted timezone in the provided timezone details. If the highlight flag
+// is invalid or the timezone is not found, it returns an error.
+//
+// Parameters:
+//
+//	highlight - A string representing the highlight flag.
+//	zones - A timezoneDetails object containing the available timezones.
+//
+// Returns:
+//
+//	int - The index of the highlighted timezone.
+//	error - An error if the highlight flag is invalid or the timezone is not found.
+func parseHighlightFlag(highlight string, zones timezoneDetails) (int, error) {
+	if highlight == "" {
+		return -1, nil
+	}
+
+	hour, offset, err := parseOffset(highlight)
+	if err != nil {
+		return -1, fmt.Errorf("invalid format: %v", err)
+	}
+
+	if hour < 0 || hour > 23 {
+		return -1, fmt.Errorf("hour must be between 0 and 23")
+	}
+
+	// Validate offset exists in configured timezones
+	if !hasTimezoneWithOffset(zones, offset) {
+		return -1, fmt.Errorf("no configured timezone with UTC%+d offset", offset)
+	}
+
+	return (hour - offset + 24) % 24, nil
+}
+
+// hasTimezoneWithOffset checks if there is a timezone with the specified offset in the provided timezone details.
+// It returns true if a timezone with the offset is found, otherwise false.
+func hasTimezoneWithOffset(zones timezoneDetails, offset int) bool {
+	for _, z := range zones {
+		if z.offset == offset {
+			return true
+		}
+	}
+	return false
+}
+
 // printTimeTable prints the time table for the given zones.
 // It takes a slice of timezoneDetails and a boolean flag indicating whether color is enabled.
 // The function uses the table package to create a table and display the time information.
@@ -247,7 +321,7 @@ func formatRowLabel(z timezoneDetail, date, offset string) string {
 // The function iterates over the zones and formats the hours, offset, and row label for each zone.
 // The formatted data is then appended to the table row and the row is added to the table.
 // Finally, the table is rendered and displayed on the console.
-func printTimeTable(zones timezoneDetails, colorEnabled bool) {
+func printTimeTable(zones timezoneDetails, colorEnabled bool, highlightHour int) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
 	if colorEnabled {
@@ -264,13 +338,19 @@ func printTimeTable(zones timezoneDetails, colorEnabled bool) {
 	}
 	t.Style().Title.Align = text.AlignCenter
 
+	// --highlight should override the current hour
+	if highlightHour > -1 {
+		t.SetIndexColumn(highlightHour + 2) // +2 because first col=timezone and hours count from 0
+	} else if date == time.Now().Format(time.DateOnly) {
+		t.SetIndexColumn(time.Now().UTC().Hour() + 2) // +2 because first col=timezone and hours count from 0
+	}
+
 	if date != time.Now().Format(time.DateOnly) {
 		// add table caption if requested date is not today
 		d, _ := time.Parse(time.DateOnly, date)
 		t.SetTitle("Showing Time For: %s", d.Format("Monday, January 2, 2006 MST"))
 	} else {
 		// date requested == today, identify the table column holding the current hour
-		t.SetIndexColumn(time.Now().UTC().Hour() + 2) // +2 because first col=timezone and hours count from 0
 		t.SetTitle("Current Local Time: %s", time.Now().Format("Monday, January 2, 2006 3:04:05 PM MST"))
 	}
 
@@ -312,7 +392,7 @@ func deduplicateSlice(s []string) []string {
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "timeBuddy",
-	Version: "v1.1.12",
+	Version: "v1.2.0",
 	Short:   "CLI version of World Time Buddy",
 	Long: `timeBuddy is a Command Line Interface (CLI) tool designed to display the current time across multiple time zones. This
 tool is particularly useful for scheduling meetings with participants in various time zones. By default, timeBuddy
@@ -333,8 +413,8 @@ Examples:
   # Display the current time for a selection of time zones:
   $ timeBuddy --timezone America/New_York --timezone Europe/Vilnius --timezone Australia/Sydney
 
-  # Display Time for a specific date(useful for checking times during Daylight Saving Time changes):
-  $ timeBuddy --date 2023-11-05 --timezone America/New_York --timezone Europe/Vilnius --timezone Australia/Sydney
+  # Display Time for a specific date and highlight 3pm AEDT(useful for Daylight Saving Time changes):
+  $ timeBuddy --date 2023-11-05 --highlight 15+11
 
   # Exclude your local time zone from the output:
    $ timeBuddy --exclude-local --timezone --timezone Europe/London --timezone Asia/Tokyo
@@ -381,25 +461,26 @@ Learn More:
 		return initializeConfig(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		// Log all settings at debug level
 		for k, v := range v.AllSettings() {
-			l.Debug().Str(k, fmt.Sprintf("%v", v)).Msg("viper:")
+			l.Debug().Str(k, fmt.Sprintf("%v", v)).Msg("viper")
 		}
 
-		// write preferences to config file
-		v.Set("color", colorEnabled)
-		v.Set("timezone", timezones)
-		v.Set("twelve-hour", twelveHourEnabled)
-		if err := v.WriteConfig(); err != nil {
-			l.Error().Str("viper", err.Error()).Send()
+		// Save user preferences to config file
+		saveUserPreferences()
+
+		// Process timezone data
+		zones := processTimezones()
+
+		// Handle highlight flag
+		highlightHour, err := processHighlightFlag(cmd, zones)
+		if err != nil {
+			l.Error().Err(err).Msg("Invalid highlight specification")
+			os.Exit(1)
 		}
 
-		// loop over the timezones and get the details for each
-		var zones timezoneDetails
-		for _, z := range timezones {
-			zones = append(zones, getZoneInfo(z, date))
-		}
-
-		printTimeTable(zones, colorEnabled)
+		// Render the time table
+		printTimeTable(zones, colorEnabled, highlightHour)
 	},
 }
 
@@ -414,6 +495,7 @@ func init() {
 	rootCmd.SetVersionTemplate(`{{printf "timeBuddy %s\n" .Version}}`)
 	rootCmd.Flags().BoolVarP(&colorEnabled, "color", "c", false, "enable colorized table output. If previously enabled, use --color=false to disable it,")
 	rootCmd.Flags().StringVarP(&date, "date", "d", time.Now().Format(time.DateOnly), "``date to use for time conversion. Expects YYYY-MM-DD format. Defaults to current date/time.")
+	rootCmd.Flags().StringVarP(&highlight, "highlight", "H", "", "highlight hour column (0-23), optionally with UTC offset (e.g., '15+11' or '9-4')")
 	rootCmd.Flags().BoolVarP(&twelveHourEnabled, "twelve-hour", "t", false, "use 12-hour time format instead of 24-hour. If previously enabled, use --twelve-hour=false to disable it.")
 	rootCmd.PersistentFlags().CountP("verbose", "v", "``increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace")
 	rootCmd.Flags().BoolP("exclude-local", "x", false, "disable default behavior of including local timezone in output")
@@ -424,4 +506,38 @@ func init() {
 	if err != nil {
 		l.Error().Err(err).Send()
 	}
+}
+
+// saveUserPreferences persists current user preferences to the config file
+func saveUserPreferences() {
+	v.Set("color", colorEnabled)
+	v.Set("timezone", timezones)
+	v.Set("twelve-hour", twelveHourEnabled)
+
+	if err := v.WriteConfig(); err != nil {
+		l.Error().Err(err).Msg("Failed to save preferences")
+	}
+}
+
+// processTimezones collects timezone information for display
+func processTimezones() timezoneDetails {
+	zones := make(timezoneDetails, 0, len(timezones))
+	for _, z := range timezones {
+		zones = append(zones, getZoneInfo(z, date))
+	}
+	return zones
+}
+
+// processHighlightFlag parses and validates the highlight flag if provided
+func processHighlightFlag(cmd *cobra.Command, zones timezoneDetails) (int, error) {
+	if !cmd.Flags().Changed("highlight") {
+		return -1, nil
+	}
+
+	highlightHour, err := parseHighlightFlag(highlight, zones)
+	if err != nil {
+		return -1, fmt.Errorf("invalid highlight specification: %w", err)
+	}
+
+	return highlightHour, nil
 }
