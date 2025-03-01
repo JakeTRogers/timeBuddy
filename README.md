@@ -57,6 +57,7 @@ Flags:
   -d, --date            date to use for time conversion. Expects YYYY-MM-DD format. Defaults to current date/time. (default "2024-01-02")
   -x, --exclude-local   disable default behavior of including local timezone in output
   -h, --help            help for timeBuddy
+  -H, --highlight       highlight hour column (0-23), optionally with UTC offset (e.g., '15+11' or '9-4')
   -z, --timezone        timezone to use for time conversion. Accepts timezone name, like America/New_York. Can be used multiple times.
   -t, --twelve-hour     use 12-hour time format instead of 24-hour. If previously enabled, use --twelve-hour=false to disable it.
   -v, --verbose         increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace
@@ -76,4 +77,7 @@ timeBuddy -t -c
 
 # Display the time table of your last used timezones, color, and time format for a specific date
 timeBuddy -d 2024-06-06
+
+# Display the time table of your last used timezones, color, and time format for a specific date, highlighting the 3pm for New York
+timeBuddy -d 2024-06-06 -H 15-5
 ```
