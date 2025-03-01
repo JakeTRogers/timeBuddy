@@ -1,3 +1,9 @@
+## v1.2.0 (2025-03-01)
+
+### Feat
+
+- add user-selectable time highlight for --date option
+
 ## v1.1.12 (2025-02-23)
 
 ### Fix
