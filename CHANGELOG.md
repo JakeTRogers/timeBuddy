@@ -1,3 +1,9 @@
+## v1.2.1 (2025-05-31)
+
+### Fix
+
+- **deps**: bump github.com/spf13/viper from 1.19.0 to 1.20.1
+
 ## v1.2.0 (2025-03-01)
 
 ### Feat
