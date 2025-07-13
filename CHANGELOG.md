@@ -1,3 +1,10 @@
+## v1.2.4 (2025-07-13)
+
+### Fix
+
+- **actions**: add permissions section to lint and version bump check workflows
+- **deps**: bump github.com/go-viper/mapstructure/v2 from 2.2.1 to 2.3.0
+
 ## v1.2.3 (2025-05-31)
 
 ### Fix
