@@ -1,3 +1,10 @@
+## v1.2.5 (2025-08-17)
+
+### Fix
+
+- **deps**: bump github.com/jedib0t/go-pretty/v6 from 6.6.7 to 6.6.8
+- **deps**: bump github.com/spf13/pflag from 1.0.6 to 1.0.7
+
 ## v1.2.4 (2025-07-13)
 
 ### Fix
