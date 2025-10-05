@@ -1,3 +1,12 @@
+## v1.2.6 (2025-10-05)
+
+### Fix
+
+- bump Go version from 1.23 to 1.25
+- **deps**: bump github.com/spf13/viper from 1.20.1 to 1.21.0
+- **deps**: bump github.com/spf13/cobra from 1.9.1 to 1.10.1
+- **deps**: bump github.com/spf13/pflag from 1.0.7 to 1.0.10
+
 ## v1.2.5 (2025-08-17)
 
 ### Fix
