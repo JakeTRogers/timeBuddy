@@ -461,6 +461,23 @@ Learn More:
 		return initializeConfig(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		// Check if wizard mode was requested
+		if wizardMode, _ := cmd.Flags().GetBool("wizard"); wizardMode {
+			selected, err := runWizard()
+			if err != nil {
+				l.Fatal().Err(err).Msg("Wizard failed")
+			}
+			if selected != nil {
+				// Update timezones with wizard selections
+				timezones = selected
+				v.Set("timezone", selected)
+				if err := v.WriteConfig(); err != nil {
+					l.Error().Err(err).Msg("Failed to save config")
+				}
+			}
+			return
+		}
+
 		// Log all settings at debug level
 		for k, v := range v.AllSettings() {
 			l.Debug().Str(k, fmt.Sprintf("%v", v)).Msg("viper")
@@ -499,6 +516,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&twelveHourEnabled, "twelve-hour", "t", false, "use 12-hour time format instead of 24-hour. If previously enabled, use --twelve-hour=false to disable it.")
 	rootCmd.PersistentFlags().CountP("verbose", "v", "``increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace")
 	rootCmd.Flags().BoolP("exclude-local", "x", false, "disable default behavior of including local timezone in output")
+	rootCmd.Flags().BoolP("wizard", "w", false, "launch interactive timezone selector wizard")
 	rootCmd.Flags().StringArrayVarP(&timezones, "timezone", "z", []string{}, "``timezone to use for time conversion. Accepts timezone name, like America/New_York. Can be used multiple times.")
 	err := rootCmd.RegisterFlagCompletionFunc("timezone", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return timezonesAll, cobra.ShellCompDirectiveDefault
