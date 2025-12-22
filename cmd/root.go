@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -40,9 +41,9 @@ type timezoneDetail = struct {
 	name           string
 	abbreviation   string
 	currentTime    time.Time
-	offset         int
+	offsetMinutes  int
 	halfHourOffset bool
-	hours          []int
+	hours          []time.Time
 }
 
 type timezoneDetails = []timezoneDetail
@@ -64,17 +65,24 @@ func initializeConfig(cmd *cobra.Command) error {
 	} else {
 		configPath = filepath.Join(os.Getenv("HOME"), ".config")
 	}
-	l.Debug().Str("configPath", configPath).Send()
+	if err := os.MkdirAll(configPath, 0o755); err != nil {
+		return fmt.Errorf("unable to create config directory: %w", err)
+	}
+
+	configFile := filepath.Join(configPath, configName+"."+configType)
+	l.Debug().Str("configPath", configPath).Str("configFile", configFile).Send()
 	v.AddConfigPath(configPath)
+	v.SetConfigFile(configFile)
 
 	// Attempt to read the config file
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Create config file if it doesn't exist
-			if err := v.SafeWriteConfig(); err != nil {
-				l.Error().Err(err).Send()
+			if err := v.SafeWriteConfigAs(configFile); err != nil {
+				l.Error().Err(err).Msg("Failed to create config file")
+			} else {
+				l.Info().Str("configFile", configFile).Msg("New config file created")
 			}
-			l.Info().Str("configFile", filepath.Join(configPath, configName+"."+configType)).Msg("New config file created:")
 		} else {
 			// Config file was found but another error was produced
 			l.Error().Str("viper", err.Error()).Send()
@@ -145,23 +153,22 @@ func getZoneInfo(timezone string, date string) timezoneDetail {
 		l.Fatal().Str("timezone", timezone).Err(err).Send()
 	}
 	zone.name = timezone
-	// if date == today, use current time, otherwise use midnight
+
+	parsedDate, _ := time.Parse(time.DateOnly, date)
+	// if date == today, use current time, otherwise use midnight in the target location
 	if date == time.Now().Format(time.DateOnly) {
-		zone.currentTime = time.Now().Local().In(loc)
+		zone.currentTime = time.Now().In(loc)
 	} else {
-		d, _ := time.Parse(time.DateOnly, date)
-		zone.currentTime = time.Date(d.Year(), d.Month(), d.Day(), d.Hour(), d.Minute(), d.Second(), d.Nanosecond(), loc)
+		zone.currentTime = time.Date(parsedDate.Year(), parsedDate.Month(), parsedDate.Day(), 0, 0, 0, 0, loc)
 	}
-	zone.abbreviation, zone.offset = zone.currentTime.In(loc).Zone()
-	zone.halfHourOffset = zone.offset%3600 != 0
-	zone.offset = zone.offset / 3600 // convert offset from seconds east of UTC to hours
-	l.Debug().Str("timezone", zone.name).Str("abbreviation", zone.abbreviation).Str("currentTime", zone.currentTime.String()).Int("offset", zone.offset).Send()
+	var offsetSeconds int
+	zone.abbreviation, offsetSeconds = zone.currentTime.In(loc).Zone()
+	zone.offsetMinutes = offsetSeconds / 60 // convert to minutes east of UTC
+	zone.halfHourOffset = zone.offsetMinutes%60 != 0
+	l.Debug().Str("timezone", zone.name).Str("abbreviation", zone.abbreviation).Str("currentTime", zone.currentTime.String()).Int("offsetMinutes", zone.offsetMinutes).Send()
 
 	// get hours for the timezone
-	hours := getHours(zone.currentTime, loc)
-	for _, h := range hours {
-		zone.hours = append(zone.hours, h.Hour())
-	}
+	zone.hours = getHours(date, loc)
 
 	return zone
 }
@@ -172,23 +179,18 @@ func getZoneInfo(timezone string, date string) timezoneDetail {
 // It also takes a time.Location pointer 'location' representing the time zone in which the hours are generated.
 // The function checks if the time zone has a 30-minute offset and adjusts the hours accordingly.
 // It returns a slice of time.Time containing the generated hours.
-func getHours(date time.Time, location *time.Location) []time.Time {
-	// Start at the beginning of the day in UTC
-	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+func getHours(date string, location *time.Location) []time.Time {
+	// Parse the requested date in UTC to keep a consistent anchor day across all timezones
+	d, err := time.ParseInLocation(time.DateOnly, date, time.UTC)
+	if err != nil {
+		// Fallback to today in UTC if parsing fails
+		d = time.Now().UTC()
+	}
+	startUTC := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 
-	// Check if the timezone has a 30-minute offset
-	_, offset := time.Now().In(location).Zone()
-	halfHourOffset := offset%3600 != 0
-
-	// Generate the hours
 	hours := make([]time.Time, 24)
 	for i := range hours {
-		// if the timezone has a 30-minute offset and the current time is past the half hour mark, add 30 minutes to the hour
-		if halfHourOffset && time.Now().UTC().Minute() >= 30 {
-			hours[i] = start.Add(time.Duration(i)*time.Hour + 30*time.Minute).In(location)
-		} else {
-			hours[i] = start.Add(time.Duration(i) * time.Hour).In(location)
-		}
+		hours[i] = startUTC.Add(time.Duration(i) * time.Hour).In(location)
 	}
 
 	return hours
@@ -199,17 +201,29 @@ func getHours(date time.Time, location *time.Location) []time.Time {
 // It returns a slice of interfaces representing the formatted hours.
 func formatHours(z timezoneDetail, twelveHourEnabled bool) []interface{} {
 	hours := make([]interface{}, len(z.hours))
-	for i, v := range z.hours {
-		if v == 0 {
-			hours[i] = fmt.Sprintf("%v", z.currentTime.Format("Mon"))
-		} else if twelveHourEnabled {
-			if v > 12 {
-				hours[i] = fmt.Sprintf("%2v\npm", v-12)
-			} else {
-				hours[i] = fmt.Sprintf("%2v\nam", v)
+	for i, t := range z.hours {
+		hour24 := t.Hour()
+		if hour24 == 0 {
+			hours[i] = t.Format("Mon")
+			continue
+		}
+
+		if twelveHourEnabled {
+			var meridiem string
+			displayHour := hour24
+			switch {
+			case hour24 == 12:
+				displayHour = 12
+				meridiem = "pm"
+			case hour24 > 12:
+				displayHour = hour24 - 12
+				meridiem = "pm"
+			default:
+				meridiem = "am"
 			}
+			hours[i] = fmt.Sprintf("%2d\n%s", displayHour, meridiem)
 		} else {
-			hours[i] = fmt.Sprintf("%2v", v)
+			hours[i] = fmt.Sprintf("%2d", hour24)
 		}
 	}
 	return hours
@@ -218,16 +232,21 @@ func formatHours(z timezoneDetail, twelveHourEnabled bool) []interface{} {
 // formatOffset formats the offset of a timezoneDetail struct into a string representation.
 // It takes a timezoneDetail struct as input and returns the formatted offset as a string with a +/- sign.
 func formatOffset(z timezoneDetail) string {
-	offset := ""
-	if z.offset >= 0 {
-		offset = fmt.Sprintf("+%d", z.offset)
-	} else {
-		offset = fmt.Sprintf("%d", z.offset)
+	sign := "+"
+	offsetMinutes := z.offsetMinutes
+	if offsetMinutes < 0 {
+		sign = "-"
+		offsetMinutes = -offsetMinutes
 	}
-	if z.halfHourOffset {
-		offset = fmt.Sprintf("%s.5", offset)
+
+	hours := offsetMinutes / 60
+	minutes := offsetMinutes % 60
+
+	if minutes == 0 {
+		return fmt.Sprintf("%s%d", sign, hours)
 	}
-	return offset
+
+	return fmt.Sprintf("%s%d:%02d", sign, hours, minutes)
 }
 
 // formatRowLabel formats the row label for a timezone detail.
@@ -248,26 +267,99 @@ func formatRowLabel(z timezoneDetail, date, offset string) string {
 // It supports formats like "hour+offset" and "hour-offset".
 // If the input does not contain a "+" or "-", it assumes the input is just the hour and sets the offset to 0 (UTC time).
 // It returns the parsed hour, offset, and any error encountered during parsing.
-func parseOffset(input string) (hour int, offset int, err error) {
-	if strings.Contains(input, "+") {
-		parts := strings.Split(input, "+")
-		if len(parts) != 2 {
-			return 0, 0, fmt.Errorf("invalid format, expected hour+offset")
-		}
-		hour, _ = strconv.Atoi(parts[0])
-		offset, err = strconv.Atoi(parts[1])
-	} else if strings.Contains(input, "-") {
-		parts := strings.Split(input, "-")
-		if len(parts) != 2 {
-			return 0, 0, fmt.Errorf("invalid format, expected hour-offset")
-		}
-		hour, _ = strconv.Atoi(parts[0])
-		offset, err = strconv.Atoi("-" + parts[1])
-	} else {
-		hour, err = strconv.Atoi(input)
-		offset = 0 // Local time
+func parseOffset(input string) (hour int, offsetMinutes int, err error) {
+	sep := strings.IndexAny(input[1:], "+-")
+	if sep != -1 {
+		sep++ // account for slicing from index 1
 	}
-	return hour, offset, err
+
+	if sep == -1 {
+		hour, err = strconv.Atoi(input)
+		return hour, 0, err
+	}
+
+	hourStr := input[:sep]
+	offsetStr := input[sep+1:]
+	if hourStr == "" || offsetStr == "" {
+		return 0, 0, fmt.Errorf("invalid format, expected hour±offset")
+	}
+
+	hour, err = strconv.Atoi(hourStr)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid hour: %w", err)
+	}
+
+	sign := 1
+	if input[sep] == '-' {
+		sign = -1
+	}
+
+	offsetMinutes, err = parseOffsetMinutes(offsetStr)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return hour, offsetMinutes * sign, nil
+}
+
+func validateLiveDateExclusion(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("live") && cmd.Flags().Changed("date") {
+		return fmt.Errorf("the --live and --date flags are mutually exclusive")
+	}
+	return nil
+}
+
+func parseOffsetMinutes(part string) (int, error) {
+	// Support formats like 11, 5.5, 5:30, 0530
+	if strings.Contains(part, ":") {
+		pieces := strings.Split(part, ":")
+		if len(pieces) != 2 {
+			return 0, fmt.Errorf("invalid offset, expected HH:MM")
+		}
+		hours, err := strconv.Atoi(pieces[0])
+		if err != nil {
+			return 0, fmt.Errorf("invalid offset hours: %w", err)
+		}
+		minutes, err := strconv.Atoi(pieces[1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid offset minutes: %w", err)
+		}
+		if minutes < 0 || minutes >= 60 {
+			return 0, fmt.Errorf("offset minutes must be between 0 and 59")
+		}
+		return hours*60 + minutes, nil
+	}
+
+	if strings.Contains(part, ".") {
+		value, err := strconv.ParseFloat(part, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid offset: %w", err)
+		}
+		return int(math.Round(value * 60)), nil
+	}
+
+	if len(part) == 4 { // handle HHMM without colon, e.g., 0530
+		hoursPart := part[:len(part)-2]
+		minutesPart := part[len(part)-2:]
+		hours, err := strconv.Atoi(hoursPart)
+		if err != nil {
+			return 0, fmt.Errorf("invalid offset hours: %w", err)
+		}
+		minutes, err := strconv.Atoi(minutesPart)
+		if err != nil {
+			return 0, fmt.Errorf("invalid offset minutes: %w", err)
+		}
+		if minutes < 0 || minutes >= 60 {
+			return 0, fmt.Errorf("offset minutes must be between 0 and 59")
+		}
+		return hours*60 + minutes, nil
+	}
+
+	hours, err := strconv.Atoi(part)
+	if err != nil {
+		return 0, fmt.Errorf("invalid offset hours: %w", err)
+	}
+	return hours * 60, nil
 }
 
 // parseHighlightFlag parses the highlight flag and returns the index of the
@@ -288,7 +380,7 @@ func parseHighlightFlag(highlight string, zones timezoneDetails) (int, error) {
 		return -1, nil
 	}
 
-	hour, offset, err := parseOffset(highlight)
+	hour, offsetMinutes, err := parseOffset(highlight)
 	if err != nil {
 		return -1, fmt.Errorf("invalid format: %v", err)
 	}
@@ -298,18 +390,26 @@ func parseHighlightFlag(highlight string, zones timezoneDetails) (int, error) {
 	}
 
 	// Validate offset exists in configured timezones
-	if !hasTimezoneWithOffset(zones, offset) {
-		return -1, fmt.Errorf("no configured timezone with UTC%+d offset", offset)
+	if !hasTimezoneWithOffset(zones, offsetMinutes) {
+		return -1, fmt.Errorf("no configured timezone with UTC offset of %+d minutes", offsetMinutes)
 	}
 
-	return (hour - offset + 24) % 24, nil
+	highlightMinutesUTC := ((hour * 60) - offsetMinutes) % (24 * 60)
+	if highlightMinutesUTC < 0 {
+		highlightMinutesUTC += 24 * 60
+	}
+
+	// Round to the nearest hour column
+	roundedHour := int(math.Round(float64(highlightMinutesUTC)/60.0)) % 24
+
+	return roundedHour, nil
 }
 
 // hasTimezoneWithOffset checks if there is a timezone with the specified offset in the provided timezone details.
 // It returns true if a timezone with the offset is found, otherwise false.
-func hasTimezoneWithOffset(zones timezoneDetails, offset int) bool {
+func hasTimezoneWithOffset(zones timezoneDetails, offsetMinutes int) bool {
 	for _, z := range zones {
-		if z.offset == offset {
+		if z.offsetMinutes == offsetMinutes {
 			return true
 		}
 	}
@@ -375,20 +475,15 @@ func printTimeTable(zones timezoneDetails, colorEnabled bool, highlightHour int)
 // If an element is not found in the rest of the slice, it is added to the result slice.
 // The function returns the deduplicated string slice.
 func deduplicateSlice(s []string) []string {
-	var result []string
-	for i, v := range s {
-		// Check if v is in the rest of the slice
-		exists := false
-		for j := i + 1; j < len(s); j++ {
-			if s[j] == v {
-				exists = true
-				break
-			}
+	result := make([]string, 0, len(s))
+	seen := make(map[string]struct{}, len(s))
+
+	for _, v := range s {
+		if _, ok := seen[v]; ok {
+			continue
 		}
-		// If v is not in the rest of the slice, add it to the result
-		if !exists {
-			result = append(result, v)
-		}
+		seen[v] = struct{}{}
+		result = append(result, v)
 	}
 	return result
 }
@@ -435,6 +530,10 @@ Examples:
 Learn More:
   To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
 	Args: func(cmd *cobra.Command, args []string) error {
+		if err := validateLiveDateExclusion(cmd); err != nil {
+			return err
+		}
+
 		// if the --date flag was provided, validate it
 		if cmd.Flags().Changed("date") {
 			_, err := time.Parse(time.DateOnly, date)
@@ -543,8 +642,6 @@ func runLiveMode(cmd *cobra.Command) {
 			fmt.Println("\nExiting live mode...")
 			return
 		case <-ticker.C:
-			// Update date to current date for live mode
-			date = time.Now().Format(time.DateOnly)
 			clearScreen()
 			renderTimeTable(cmd)
 			fmt.Println("\nLive mode active. Press Ctrl+C to exit.")
