@@ -1,26 +1,37 @@
 {
-	"name": "Go",
-	"image": "mcr.microsoft.com/devcontainers/go:2-1.25",
-	"runArgs": [ "--userns=keep-id" ],
-	"customizations": {
-		"vscode": {
-			"settings": {
-				"go.toolsManagement.checkForUpdates": "local",
-				"go.useLanguageServer": true,
-				"go.gopath": "/go",
-				"go.goroot": "/usr/local/go"
-			},
-			"extensions": [
-				"DavidAnson.vscode-markdownlint",
-				"EditorConfig.EditorConfig",
-				"golang.Go",
-				"GitHub.copilot",
-				"GitHub.copilot-chat",
-				"streetsidesoftware.code-spell-checker",
-				"yzhang.markdown-all-in-one"
-			]
-		}
-	},
-"containerEnv": { "HOME": "/home/vscode" },
-"remoteUser": "vscode"
+    "name": "Go",
+    "image": "mcr.microsoft.com/devcontainers/go:2-1.25",
+    "runArgs": [
+        "--userns=keep-id"
+    ],
+    "securityOpt": [
+        "no-new-privileges=false"
+    ],
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "go.toolsManagement.checkForUpdates": "local",
+                "go.useLanguageServer": true,
+                "go.gopath": "/go",
+                "go.goroot": "/usr/local/go"
+            },
+            "extensions": [
+                "aaron-bond.better-comments",
+                "bierner.markdown-checkbox",
+                "bierner.markdown-emoji",
+                "bierner.markdown-footnotes",
+                "bierner.markdown-mermaid",
+                "bierner.markdown-preview-github-styles",
+                "DavidAnson.vscode-markdownlint",
+                "EditorConfig.EditorConfig",
+                "golang.go",
+                "streetsidesoftware.code-spell-checker",
+                "yzhang.markdown-all-in-one"
+            ]
+        }
+    },
+    "containerEnv": {
+        "HOME": "/home/vscode"
+    },
+    "remoteUser": "vscode"
 }
