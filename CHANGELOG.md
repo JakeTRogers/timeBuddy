@@ -1,3 +1,18 @@
+## v2.0.0 (2025-12-22)
+
+### Feat
+
+- **list**: update timezone list by adding America/Coyhaique and removing obsolete entries
+- add live mode
+- **wizard**: add interactive timezone selection wizard and related functionality
+
+### Fix
+
+- **logger**: refactor SetLogLevel function for improved readability
+- improve timezone handling, config creation, and highlight parsing
+- **deps**: bump github.com/jedib0t/go-pretty/v6 from 6.6.8 to 6.7.7
+- **deps**: bump github.com/spf13/cobra from 1.10.1 to 1.10.2
+
 ## v1.2.6 (2025-10-05)
 
 ### Fix

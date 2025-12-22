@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,10 +18,10 @@ import (
 var (
 	// Common test timezones used across multiple tests
 	testZones = timezoneDetails{
-		{name: "America/New_York", offset: -5},
-		{name: "Europe/London", offset: 0},
-		{name: "Asia/Tokyo", offset: 9},
-		{name: "Australia/Sydney", offset: 11},
+		{name: "America/New_York", offsetMinutes: -300},
+		{name: "Europe/London", offsetMinutes: 0},
+		{name: "Asia/Tokyo", offsetMinutes: 540},
+		{name: "Australia/Sydney", offsetMinutes: 660},
 	}
 
 	// Test time for consistent testing
@@ -68,14 +69,21 @@ func toStrings(values []interface{}) []string {
 }
 
 // makeTimezoneDetail creates a test timezone detail
-func makeTimezoneDetail(name string, offset int, halfHour bool) timezoneDetail {
+func makeTimezoneDetail(name string, offsetMinutes int, halfHour bool) timezoneDetail {
 	return timezoneDetail{
 		name:           name,
 		abbreviation:   "TST",
 		currentTime:    testTime,
-		offset:         offset,
+		offsetMinutes:  offsetMinutes,
 		halfHourOffset: halfHour,
-		hours:          []int{0, 1, 2, 12, 13, 23},
+		hours: []time.Time{
+			time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+			time.Date(2024, 6, 15, 1, 0, 0, 0, time.UTC),
+			time.Date(2024, 6, 15, 2, 0, 0, 0, time.UTC),
+			time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+			time.Date(2024, 6, 15, 13, 0, 0, 0, time.UTC),
+			time.Date(2024, 6, 15, 23, 0, 0, 0, time.UTC),
+		},
 	}
 }
 
@@ -91,14 +99,14 @@ func TestParseOffset(t *testing.T) {
 			name:           "hour with positive offset",
 			input:          "15+11",
 			expectedHour:   15,
-			expectedOffset: 11,
+			expectedOffset: 660,
 			expectError:    false,
 		},
 		{
 			name:           "hour with negative offset",
 			input:          "9-4",
 			expectedHour:   9,
-			expectedOffset: -4,
+			expectedOffset: -240,
 			expectError:    false,
 		},
 		{
@@ -112,14 +120,28 @@ func TestParseOffset(t *testing.T) {
 			name:           "zero hour with offset",
 			input:          "0+5",
 			expectedHour:   0,
-			expectedOffset: 5,
+			expectedOffset: 300,
 			expectError:    false,
 		},
 		{
 			name:           "hour 23 with negative offset",
 			input:          "23-8",
 			expectedHour:   23,
-			expectedOffset: -8,
+			expectedOffset: -480,
+			expectError:    false,
+		},
+		{
+			name:           "hour with fractional offset",
+			input:          "10+5.5",
+			expectedHour:   10,
+			expectedOffset: 330,
+			expectError:    false,
+		},
+		{
+			name:           "hour with hh:mm offset",
+			input:          "8-05:45",
+			expectedHour:   8,
+			expectedOffset: -345,
 			expectError:    false,
 		},
 		{
@@ -175,14 +197,14 @@ func TestParseHighlightFlag(t *testing.T) {
 			highlight:      "15+11",
 			expectError:    false,
 			expectedHour:   15,
-			expectedOffset: 11,
+			expectedOffset: 660,
 		},
 		{
 			name:           "valid hour with negative offset",
 			highlight:      "9-5",
 			expectError:    false,
 			expectedHour:   9,
-			expectedOffset: -5,
+			expectedOffset: -300,
 		},
 		{
 			name:           "valid hour UTC",
@@ -190,6 +212,16 @@ func TestParseHighlightFlag(t *testing.T) {
 			expectError:    false,
 			expectedHour:   12,
 			expectedOffset: 0,
+		},
+		{
+			name:           "valid hour with fractional offset",
+			highlight:      "9+5.5",
+			expectError:    false,
+			expectedHour:   9,
+			expectedOffset: 330,
+			zones: timezoneDetails{
+				{name: "Asia/Kolkata", offsetMinutes: 330},
+			},
 		},
 		{
 			name:          "hour out of range (negative)",
@@ -228,7 +260,11 @@ func TestParseHighlightFlag(t *testing.T) {
 			if tt.expectedIndex != nil {
 				expectedIndex = *tt.expectedIndex
 			} else {
-				expectedIndex = ((tt.expectedHour - tt.expectedOffset) + 24) % 24
+				highlightMinutes := ((tt.expectedHour * 60) - tt.expectedOffset) % (24 * 60)
+				if highlightMinutes < 0 {
+					highlightMinutes += 24 * 60
+				}
+				expectedIndex = int(math.Round(float64(highlightMinutes)/60.0)) % 24
 			}
 			assertEqual(t, index, expectedIndex, "Expected index %d, got %d", expectedIndex, index)
 		})
@@ -243,7 +279,7 @@ func TestHasTimezoneWithOffset(t *testing.T) {
 	}{
 		{
 			name:     "offset exists (-5)",
-			offset:   -5,
+			offset:   -300,
 			expected: true,
 		},
 		{
@@ -253,17 +289,17 @@ func TestHasTimezoneWithOffset(t *testing.T) {
 		},
 		{
 			name:     "offset exists (9)",
-			offset:   9,
+			offset:   540,
 			expected: true,
 		},
 		{
 			name:     "offset does not exist (5)",
-			offset:   5,
+			offset:   300,
 			expected: false,
 		},
 		{
 			name:     "offset does not exist (-8)",
-			offset:   -8,
+			offset:   -480,
 			expected: false,
 		},
 	}
@@ -290,7 +326,7 @@ func TestDeduplicateSlice(t *testing.T) {
 		{
 			name:     "with duplicates",
 			input:    []string{"a", "b", "a", "c", "b"},
-			expected: []string{"a", "c", "b"},
+			expected: []string{"a", "b", "c"},
 		},
 		{
 			name:     "all duplicates",
@@ -326,11 +362,11 @@ func TestFormatOffset(t *testing.T) {
 		halfHour bool
 		expected string
 	}{
-		{"positive whole hour offset", 5, false, "+5"},
-		{"negative whole hour offset", -8, false, "-8"},
+		{"positive whole hour offset", 300, false, "+5"},
+		{"negative whole hour offset", -480, false, "-8"},
 		{"zero offset", 0, false, "+0"},
-		{"positive half hour offset", 5, true, "+5.5"},
-		{"negative half hour offset", -9, true, "-9.5"},
+		{"positive half hour offset", 330, true, "+5:30"},
+		{"negative half hour offset", -570, true, "-9:30"},
 	}
 
 	for _, tt := range tests {
@@ -339,6 +375,33 @@ func TestFormatOffset(t *testing.T) {
 			result := formatOffset(zone)
 			assertEqual(t, result, tt.expected, "Expected %s, got %s", tt.expected, result)
 		})
+	}
+}
+
+func TestValidateLiveDateExclusion(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("live", false, "")
+	cmd.Flags().String("date", time.Now().Format(time.DateOnly), "")
+
+	// No flags set
+	if err := validateLiveDateExclusion(cmd); err != nil {
+		t.Fatalf("expected no error when flags unset, got %v", err)
+	}
+
+	// Only live set
+	if err := cmd.Flags().Set("live", "true"); err != nil {
+		t.Fatalf("failed to set live flag: %v", err)
+	}
+	if err := validateLiveDateExclusion(cmd); err != nil {
+		t.Fatalf("expected no error when only live set, got %v", err)
+	}
+
+	// Both live and date set
+	if err := cmd.Flags().Set("date", "2025-12-22"); err != nil {
+		t.Fatalf("failed to set date flag: %v", err)
+	}
+	if err := validateLiveDateExclusion(cmd); err == nil {
+		t.Fatalf("expected error when both live and date are set")
 	}
 }
 
@@ -408,7 +471,7 @@ func TestFormatHours(t *testing.T) {
 			name:              "12-hour format",
 			twelveHourEnabled: true,
 			expected: func(zone timezoneDetail) []string {
-				return []string{zone.currentTime.Format("Mon"), " 1\nam", " 2\nam", "12\nam", " 1\npm", "11\npm"}
+				return []string{zone.currentTime.Format("Mon"), " 1\nam", " 2\nam", "12\npm", " 1\npm", "11\npm"}
 			},
 		},
 	}
@@ -439,8 +502,8 @@ func TestGetZoneInfo(t *testing.T) {
 				if zone.name != "UTC" {
 					t.Errorf("Expected name 'UTC', got '%s'", zone.name)
 				}
-				if zone.offset != 0 {
-					t.Errorf("Expected offset 0, got %d", zone.offset)
+				if zone.offsetMinutes != 0 {
+					t.Errorf("Expected offset 0, got %d", zone.offsetMinutes)
 				}
 				if len(zone.hours) != 24 {
 					t.Errorf("Expected 24 hours, got %d", len(zone.hours))
@@ -476,8 +539,7 @@ func TestGetHours(t *testing.T) {
 		t.Fatalf("Failed to load UTC location: %v", err)
 	}
 
-	date := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
-	hours := getHours(date, loc)
+	hours := getHours("2024-06-15", loc)
 
 	if len(hours) != 24 {
 		t.Errorf("Expected 24 hours, got %d", len(hours))
@@ -508,6 +570,11 @@ func TestInitializeConfig(t *testing.T) {
 	err := initializeConfig(rootCmd)
 	if err != nil {
 		t.Errorf("initializeConfig failed: %v", err)
+	}
+
+	configFile := filepath.Join(configDir, ".timeBuddy.yaml")
+	if _, err := os.Stat(configFile); err != nil {
+		t.Errorf("expected config file at %s: %v", configFile, err)
 	}
 }
 
@@ -542,8 +609,8 @@ func TestProcessTimezones(t *testing.T) {
 // TestProcessHighlightFlag tests the processHighlightFlag function
 func TestProcessHighlightFlag(t *testing.T) {
 	zones := timezoneDetails{
-		{name: "America/New_York", offset: -5},
-		{name: "Europe/London", offset: 0},
+		{name: "America/New_York", offsetMinutes: -300},
+		{name: "Europe/London", offsetMinutes: 0},
 	}
 
 	tests := []struct {
@@ -654,8 +721,7 @@ func TestGetHoursWithHalfHourOffset(t *testing.T) {
 		t.Skipf("Failed to load Asia/Kolkata location: %v", err)
 	}
 
-	date := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
-	hours := getHours(date, loc)
+	hours := getHours("2024-06-15", loc)
 
 	if len(hours) != 24 {
 		t.Errorf("Expected 24 hours, got %d", len(hours))
@@ -688,18 +754,18 @@ func TestFormatHoursEdgeCases(t *testing.T) {
 		},
 		{
 			name:              "noon in 12-hour format",
-			hours:             []int{11, 12, 13},
+			hours:             []int{0, 11, 12, 13},
 			twelveHourEnabled: true,
 			expected: func(timezoneDetail) []string {
-				return []string{"11\nam", "12\nam", " 1\npm"}
+				return []string{"Sat", "11\nam", "12\npm", " 1\npm"}
 			},
 		},
 		{
 			name:              "23:00 in 12-hour format",
-			hours:             []int{22, 23},
+			hours:             []int{0, 22, 23},
 			twelveHourEnabled: true,
 			expected: func(timezoneDetail) []string {
-				return []string{"10\npm", "11\npm"}
+				return []string{"Sat", "10\npm", "11\npm"}
 			},
 		},
 		{
@@ -714,10 +780,15 @@ func TestFormatHoursEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var hourTimes []time.Time
+			for _, h := range tt.hours {
+				hourTimes = append(hourTimes, time.Date(2024, 6, 15, h, 0, 0, 0, time.UTC))
+			}
+
 			zone := timezoneDetail{
 				name:        "Test/Zone",
 				currentTime: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
-				hours:       tt.hours,
+				hours:       hourTimes,
 			}
 
 			result := formatHours(zone, tt.twelveHourEnabled)
@@ -732,7 +803,7 @@ func TestFormatHoursEdgeCases(t *testing.T) {
 // TestDeduplicateSliceOrder tests that deduplicateSlice maintains correct order
 func TestDeduplicateSliceOrder(t *testing.T) {
 	input := []string{"first", "second", "first", "third", "second", "fourth"}
-	expected := []string{"first", "third", "second", "fourth"}
+	expected := []string{"first", "second", "third", "fourth"}
 
 	result := deduplicateSlice(input)
 

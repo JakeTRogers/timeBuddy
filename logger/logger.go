@@ -33,17 +33,19 @@ func GetLogger() *zerolog.Logger {
 
 func SetLogLevel(verboseCount int) {
 	var level zerolog.Level
-	switch {
-	case verboseCount == 1:
-		level = (zerolog.WarnLevel)
-	case verboseCount == 2:
-		level = (zerolog.InfoLevel)
-	case verboseCount == 3:
-		level = (zerolog.DebugLevel)
-	case verboseCount >= 4:
-		level = (zerolog.TraceLevel)
+	switch verboseCount {
+	case 1:
+		level = zerolog.WarnLevel
+	case 2:
+		level = zerolog.InfoLevel
+	case 3:
+		level = zerolog.DebugLevel
 	default:
-		level = (zerolog.ErrorLevel)
+		if verboseCount >= 4 {
+			level = zerolog.TraceLevel
+		} else {
+			level = zerolog.ErrorLevel
+		}
 	}
 	log = log.Level(level)
 }
