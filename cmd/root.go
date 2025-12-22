@@ -6,10 +6,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	_ "time/tzdata"
 
@@ -24,6 +26,8 @@ import (
 var (
 	colorEnabled               bool
 	highlight                  string
+	liveMode                   bool
+	liveInterval               int
 	twelveHourEnabled          bool
 	date                       string
 	timezones                  []string
@@ -422,6 +426,12 @@ Examples:
   # Enable colorized table output:
    $ timeBuddy --color
 
+  # Enable live mode to continuously update the display:
+   $ timeBuddy --live
+
+  # Enable live mode with a custom refresh interval (every 5 seconds):
+   $ timeBuddy --live --interval 5
+
 Learn More:
   To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -486,6 +496,12 @@ Learn More:
 		// Save user preferences to config file
 		saveUserPreferences()
 
+		// Live mode: continuously refresh the time table
+		if liveMode {
+			runLiveMode(cmd)
+			return
+		}
+
 		// Process timezone data
 		zones := processTimezones()
 
@@ -501,6 +517,52 @@ Learn More:
 	},
 }
 
+// clearScreen clears the terminal screen using ANSI escape codes
+func clearScreen() {
+	fmt.Print("\033[H\033[2J")
+}
+
+// runLiveMode continuously refreshes the time table at the specified interval
+func runLiveMode(cmd *cobra.Command) {
+	// Set up signal handling for graceful exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Create a ticker for the refresh interval
+	ticker := time.NewTicker(time.Duration(liveInterval) * time.Second)
+	defer ticker.Stop()
+
+	// Initial render
+	renderTimeTable(cmd)
+
+	fmt.Println("\nLive mode active. Press Ctrl+C to exit.")
+
+	for {
+		select {
+		case <-sigChan:
+			fmt.Println("\nExiting live mode...")
+			return
+		case <-ticker.C:
+			// Update date to current date for live mode
+			date = time.Now().Format(time.DateOnly)
+			clearScreen()
+			renderTimeTable(cmd)
+			fmt.Println("\nLive mode active. Press Ctrl+C to exit.")
+		}
+	}
+}
+
+// renderTimeTable processes timezones and renders the time table
+func renderTimeTable(cmd *cobra.Command) {
+	zones := processTimezones()
+	highlightHour, err := processHighlightFlag(cmd, zones)
+	if err != nil {
+		l.Error().Err(err).Msg("Invalid highlight specification")
+		return
+	}
+	printTimeTable(zones, colorEnabled, highlightHour)
+}
+
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -513,11 +575,17 @@ func init() {
 	rootCmd.Flags().BoolVarP(&colorEnabled, "color", "c", false, "enable colorized table output. If previously enabled, use --color=false to disable it,")
 	rootCmd.Flags().StringVarP(&date, "date", "d", time.Now().Format(time.DateOnly), "``date to use for time conversion. Expects YYYY-MM-DD format. Defaults to current date/time.")
 	rootCmd.Flags().StringVarP(&highlight, "highlight", "H", "", "highlight hour column (0-23), optionally with UTC offset (e.g., '15+11' or '9-4')")
+	rootCmd.Flags().BoolVarP(&liveMode, "live", "l", false, "enable live mode to continuously refresh the time display (press Ctrl+C to exit)")
+	rootCmd.Flags().IntVarP(&liveInterval, "interval", "i", 1, "refresh interval in seconds for live mode")
 	rootCmd.Flags().BoolVarP(&twelveHourEnabled, "twelve-hour", "t", false, "use 12-hour time format instead of 24-hour. If previously enabled, use --twelve-hour=false to disable it.")
 	rootCmd.PersistentFlags().CountP("verbose", "v", "``increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace")
 	rootCmd.Flags().BoolP("exclude-local", "x", false, "disable default behavior of including local timezone in output")
 	rootCmd.Flags().BoolP("wizard", "w", false, "launch interactive timezone selector wizard")
 	rootCmd.Flags().StringArrayVarP(&timezones, "timezone", "z", []string{}, "``timezone to use for time conversion. Accepts timezone name, like America/New_York. Can be used multiple times.")
+
+	// Enforce mutual exclusion for live and date at the flag level
+	rootCmd.MarkFlagsMutuallyExclusive("live", "date")
+
 	err := rootCmd.RegisterFlagCompletionFunc("timezone", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return timezonesAll, cobra.ShellCompDirectiveDefault
 	})
