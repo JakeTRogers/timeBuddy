@@ -1,3 +1,9 @@
+## v2.0.1 (2025-12-28)
+
+### Refactor
+
+- refactor: rewrite to follow go.instructions.md
+
 ## v2.0.0 (2025-12-22)
 
 ### Feat
