@@ -1,6 +1,4 @@
-/*
-Copyright © 2024 Jake Rogers <code@supportoss.org>
-*/
+// Copyright © 2025 Jake Rogers <code@supportoss.org>
 package cmd
 
 import (
@@ -14,23 +12,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Pane focus constants
+// pane identifies which pane has focus in the wizard UI.
 type pane int
 
 const (
+	// selectedPane is the left pane showing selected timezones.
 	selectedPane pane = iota
+	// availablePane is the right pane showing available timezones.
 	availablePane
 )
 
-// Tree node types
+// nodeType identifies the type of a tree node.
 type nodeType int
 
 const (
+	// areaNode represents a timezone area (e.g., "America").
 	areaNode nodeType = iota
+	// locationNode represents a specific timezone location.
 	locationNode
 )
 
-// treeNode represents an item in the available timezones tree
+// treeNode represents an item in the available timezones tree.
 type treeNode struct {
 	name       string
 	fullPath   string // Full timezone path (e.g., "America/New_York")
@@ -41,17 +43,18 @@ type treeNode struct {
 	isSelected bool // Whether this timezone is in the selected list
 }
 
-// flatTreeEntry represents a visible item in the flattened tree view
+// flatTreeEntry represents a visible item in the flattened tree view.
 type flatTreeEntry struct {
 	areaIdx  int
 	childIdx int // -1 if this is an area node
 }
 
+// isArea returns true if this entry represents an area node.
 func (f flatTreeEntry) isArea() bool {
 	return f.childIdx == -1
 }
 
-// searchMatch represents a timezone that matches the search query
+// searchMatch represents a timezone that matches the search query.
 type searchMatch struct {
 	fullPath   string
 	areaIdx    int
@@ -59,7 +62,7 @@ type searchMatch struct {
 	isSelected bool
 }
 
-// wizardModel is the Bubbletea model for the timezone wizard
+// wizardModel is the Bubbletea model for the timezone wizard.
 type wizardModel struct {
 	// Data
 	selected  []string             // Currently selected timezones (ordered)
@@ -1043,9 +1046,9 @@ func (m wizardModel) renderHelp() string {
 	return helpStyle.Render(strings.Join(parts, " • "))
 }
 
-// runWizard starts the interactive timezone wizard
+// runWizard starts the interactive timezone wizard.
+// It returns the selected timezones or nil if cancelled.
 func runWizard() ([]string, error) {
-	// Get current timezones from viper
 	currentTimezones := v.GetStringSlice("timezone")
 	if len(currentTimezones) == 0 {
 		currentTimezones = []string{"Local"}
@@ -1059,14 +1062,19 @@ func runWizard() ([]string, error) {
 		return nil, fmt.Errorf("error running wizard: %w", err)
 	}
 
-	m := finalModel.(wizardModel)
+	m, ok := finalModel.(wizardModel)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type: %T", finalModel)
+	}
+
 	if m.saved {
 		return m.selected, nil
 	}
 
-	return nil, nil // Cancelled
+	return nil, nil
 }
 
+// wizardCmd is the command for the interactive timezone selector.
 var wizardCmd = &cobra.Command{
 	Use:   "wizard",
 	Short: "Interactive timezone selector",
@@ -1088,22 +1096,28 @@ Navigation:
 
 Example:
   $ timeBuddy wizard`,
-	Run: func(cmd *cobra.Command, args []string) {
-		selected, err := runWizard()
-		if err != nil {
-			l.Fatal().Err(err).Msg("Wizard failed")
-		}
+	RunE: runWizardCmd,
+}
 
-		if selected != nil {
-			// Save to config
-			v.Set("timezone", selected)
-			if err := v.WriteConfig(); err != nil {
-				l.Error().Err(err).Msg("Failed to save config")
-			} else {
-				fmt.Printf("Saved %d timezone(s) to config.\n", len(selected))
-			}
-		}
-	},
+// runWizardCmd executes the wizard command.
+func runWizardCmd(cmd *cobra.Command, args []string) error {
+	selected, err := runWizard()
+	if err != nil {
+		return fmt.Errorf("wizard failed: %w", err)
+	}
+
+	if selected == nil {
+		return nil
+	}
+
+	v.Set("timezone", selected)
+	if err := v.WriteConfig(); err != nil {
+		log.Error().Err(err).Msg("failed to save config")
+		return nil
+	}
+
+	fmt.Printf("Saved %d timezone(s) to config.\n", len(selected))
+	return nil
 }
 
 func init() {
