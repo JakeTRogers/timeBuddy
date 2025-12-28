@@ -6,7 +6,7 @@ CLI based version of [World Time Buddy](https://www.worldtimebuddy.com/)
 
 TimeBuddy is a CLI tool, implemented in Go, that mimics the functionality of World Time Buddy. It accepts a list of timezones and displays the current time for each in a tabular format. You can use `timeBuddy list` to view a list of all available timezones. Alternatively, you can setup the shell autocompletion script(`timeBuddy completion --help`) for your preferred shell and use tab completion to select the timezones you are interested in.
 
-The program is aware of daylight savings time and adjusts the time for each timezone accordingly. A specific date can also be provided to view the time in each timezone for that date.
+The program is aware of daylight savings time and adjusts the time for each timezone accordingly. A specific date can also be provided to view the time in each timezone for that date. Invalid timezone names or date formats produce clear error messages with context.
 
 The last used timezones, color, and time format preferences are saved in a YAML formatted configuration file. This feature ensures that you need to
 specify your preferred time zones only once. The order in which you specify the time zones is retained and reflected in the table output.
