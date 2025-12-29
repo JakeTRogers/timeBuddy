@@ -74,9 +74,9 @@ func Test_SetLogLevel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			SetLogLevel(tt.verboseCount)
 
-			logger := GetLogger()
-			if logger.GetLevel() != tt.expectedLevel {
-				t.Errorf("Expected level %v, got %v", tt.expectedLevel, logger.GetLevel())
+			// Check global level since we use zerolog.SetGlobalLevel()
+			if zerolog.GlobalLevel() != tt.expectedLevel {
+				t.Errorf("Expected level %v, got %v", tt.expectedLevel, zerolog.GlobalLevel())
 			}
 		})
 	}

@@ -34,12 +34,14 @@ func assertLocationInArea(t *testing.T, areas map[string][]string, area, locatio
 }
 
 func Test_timezonesAll_notEmpty(t *testing.T) {
+	t.Parallel()
 	if len(timezonesAll) == 0 {
 		t.Error("timezonesAll should not be empty")
 	}
 }
 
 func Test_timezonesAll_containsKnown(t *testing.T) {
+	t.Parallel()
 	knownTimezones := []string{
 		"America/New_York",
 		"Europe/London",
@@ -50,18 +52,22 @@ func Test_timezonesAll_containsKnown(t *testing.T) {
 
 	for _, tz := range knownTimezones {
 		t.Run(tz, func(t *testing.T) {
+			t.Parallel()
 			assertTimezoneExists(t, tz)
 		})
 	}
 }
 
-func Test_listCmd_exists(t *testing.T) {
+func Test_NewListCmd_exists(t *testing.T) {
+	t.Parallel()
+	listCmd := NewListCmd()
 	if listCmd == nil {
-		t.Error("listCmd should not be nil")
+		t.Error("NewListCmd() should not return nil")
 	}
 }
 
 func Test_listAreas(t *testing.T) {
+	t.Parallel()
 	result := listAreas()
 
 	if len(result) == 0 {
@@ -69,6 +75,7 @@ func Test_listAreas(t *testing.T) {
 	}
 
 	t.Run("known areas exist", func(t *testing.T) {
+		t.Parallel()
 		knownAreas := []string{"America", "Europe", "Asia", "Australia", "Africa"}
 		for _, area := range knownAreas {
 			if _, exists := result[area]; !exists {
@@ -78,6 +85,7 @@ func Test_listAreas(t *testing.T) {
 	})
 
 	t.Run("timezone parsing", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			area     string
 			location string
@@ -90,13 +98,15 @@ func Test_listAreas(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.area+"/"+tt.location, func(t *testing.T) {
+				t.Parallel()
 				assertLocationInArea(t, result, tt.area, tt.location)
 			})
 		}
 	})
 }
 
-func Test_listCmd_flags(t *testing.T) {
+func Test_NewListCmd_flags(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		flagName string
@@ -108,6 +118,8 @@ func Test_listCmd_flags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			listCmd := NewListCmd()
 			flag := listCmd.Flags().Lookup(tt.flagName)
 			if flag == nil {
 				t.Errorf("listCmd should have a '%s' flag", tt.flagName)
@@ -116,8 +128,9 @@ func Test_listCmd_flags(t *testing.T) {
 	}
 }
 
-// Test_validateListArgs tests the validateListArgs function
-func Test_validateListArgs(t *testing.T) {
+// Test_validateListArgs tests the validateListArgs function via the command
+func Test_validateListArgs_via_cmd(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		setupCmd      func(*cobra.Command)
@@ -148,21 +161,16 @@ func Test_validateListArgs(t *testing.T) {
 		},
 	}
 
-	// Save original area value
-	originalArea := area
-	t.Cleanup(func() {
-		area = originalArea
-	})
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create test command with required flags
-			cmd := &cobra.Command{}
-			cmd.Flags().StringVarP(&area, "locations", "l", "", "")
+			t.Parallel()
+			// Create a fresh list command for each test
+			listCmd := NewListCmd()
 
-			tt.setupCmd(cmd)
+			tt.setupCmd(listCmd)
 
-			err := validateListArgs(cmd, nil)
+			// Execute Args validator
+			err := listCmd.Args(listCmd, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -177,8 +185,9 @@ func Test_validateListArgs(t *testing.T) {
 	}
 }
 
-// Test_runList tests the runList function
-func Test_runList(t *testing.T) {
+// Test_runList tests the runList function via the command
+func Test_runList_via_cmd(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		setupCmd func(*cobra.Command)
@@ -203,23 +212,16 @@ func Test_runList(t *testing.T) {
 		},
 	}
 
-	// Save original area value
-	originalArea := area
-	t.Cleanup(func() {
-		area = originalArea
-	})
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create test command with required flags
-			cmd := &cobra.Command{}
-			cmd.Flags().Bool("areas", false, "")
-			cmd.Flags().StringVarP(&area, "locations", "l", "", "")
-			cmd.Flags().Bool("timezones", false, "")
+			t.Parallel()
+			// Create a fresh list command for each test
+			listCmd := NewListCmd()
 
-			tt.setupCmd(cmd)
+			tt.setupCmd(listCmd)
 
-			err := runList(cmd, nil)
+			// Execute RunE
+			err := listCmd.RunE(listCmd, nil)
 			if err != nil {
 				t.Errorf("runList failed: %v", err)
 			}
@@ -229,6 +231,7 @@ func Test_runList(t *testing.T) {
 
 // Test_printAreas tests the printAreas function
 func Test_printAreas(t *testing.T) {
+	t.Parallel()
 	// Test that it doesn't panic and returns nil
 	err := printAreas()
 	if err != nil {
@@ -238,6 +241,7 @@ func Test_printAreas(t *testing.T) {
 
 // Test_printLocations tests the printLocations function
 func Test_printLocations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		areaName    string
@@ -257,11 +261,8 @@ func Test_printLocations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create test command with required flags
-			cmd := &cobra.Command{}
-			cmd.Flags().String("locations", tt.areaName, "")
-
-			err := printLocations(cmd)
+			t.Parallel()
+			err := printLocations(tt.areaName)
 
 			if tt.expectError {
 				if err == nil {
@@ -276,6 +277,7 @@ func Test_printLocations(t *testing.T) {
 
 // Test_printAllTimezones tests the printAllTimezones function
 func Test_printAllTimezones(t *testing.T) {
+	t.Parallel()
 	err := printAllTimezones()
 	if err != nil {
 		t.Errorf("printAllTimezones failed: %v", err)

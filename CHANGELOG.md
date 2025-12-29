@@ -1,3 +1,9 @@
+## v2.0.2 (2025-12-29)
+
+### Refactor
+
+- eliminate global state in root & sub-commands to improve testability; enhance logging
+
 ## v2.0.1 (2025-12-28)
 
 ### Refactor

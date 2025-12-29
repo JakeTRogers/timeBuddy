@@ -6,10 +6,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/JakeTRogers/timeBuddy/logger"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // pane identifies which pane has focus in the wizard UI.
@@ -1048,7 +1051,11 @@ func (m wizardModel) renderHelp() string {
 
 // runWizard starts the interactive timezone wizard.
 // It returns the selected timezones or nil if cancelled.
-func runWizard() ([]string, error) {
+func runWizard(v *viper.Viper, log *zerolog.Logger) ([]string, error) {
+	// Disable logging before starting TUI to prevent interference with display
+	log.Warn().Msg("disabling logging for interactive wizard")
+	logger.Disable()
+
 	currentTimezones := v.GetStringSlice("timezone")
 	if len(currentTimezones) == 0 {
 		currentTimezones = []string{"Local"}
@@ -1074,11 +1081,15 @@ func runWizard() ([]string, error) {
 	return nil, nil
 }
 
-// wizardCmd is the command for the interactive timezone selector.
-var wizardCmd = &cobra.Command{
-	Use:   "wizard",
-	Short: "Interactive timezone selector",
-	Long: `Launch an interactive wizard to select and reorder timezones.
+// NewWizardCmd creates and returns a new wizard command.
+// Each call returns a fresh instance for test isolation.
+func NewWizardCmd(v *viper.Viper) *cobra.Command {
+	log := logger.GetLogger()
+
+	wizardCmd := &cobra.Command{
+		Use:   "wizard",
+		Short: "Interactive timezone selector",
+		Long: `Launch an interactive wizard to select and reorder timezones.
 
 The wizard displays two panes:
   - Left pane: Your currently selected timezones (ordered)
@@ -1096,30 +1107,30 @@ Navigation:
 
 Example:
   $ timeBuddy wizard`,
-	RunE: runWizardCmd,
-}
-
-// runWizardCmd executes the wizard command.
-func runWizardCmd(cmd *cobra.Command, args []string) error {
-	selected, err := runWizard()
-	if err != nil {
-		return fmt.Errorf("wizard failed: %w", err)
 	}
 
-	if selected == nil {
+	// runWizardCmd executes the wizard command.
+	runWizardCmd := func(cmd *cobra.Command, args []string) error {
+		selected, err := runWizard(v, log)
+		if err != nil {
+			return fmt.Errorf("wizard failed: %w", err)
+		}
+
+		if selected == nil {
+			return nil
+		}
+
+		v.Set("timezone", selected)
+		if err := v.WriteConfig(); err != nil {
+			log.Error().Err(err).Msg("failed to save config")
+			return nil
+		}
+
+		fmt.Printf("Saved %d timezone(s) to config.\n", len(selected))
 		return nil
 	}
 
-	v.Set("timezone", selected)
-	if err := v.WriteConfig(); err != nil {
-		log.Error().Err(err).Msg("failed to save config")
-		return nil
-	}
+	wizardCmd.RunE = runWizardCmd
 
-	fmt.Printf("Saved %d timezone(s) to config.\n", len(selected))
-	return nil
-}
-
-func init() {
-	rootCmd.AddCommand(wizardCmd)
+	return wizardCmd
 }

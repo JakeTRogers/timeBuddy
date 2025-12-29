@@ -220,6 +220,9 @@ func Test_wizardModel_removeFromSelected(t *testing.T) {
 }
 
 func Test_wizardCmd_exists(t *testing.T) {
+	t.Parallel()
+
+	rootCmd := NewRootCmd()
 	found := false
 	for _, cmd := range rootCmd.Commands() {
 		if cmd.Use == "wizard" {

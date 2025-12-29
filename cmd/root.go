@@ -19,6 +19,7 @@ import (
 	"github.com/JakeTRogers/timeBuddy/logger"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -27,20 +28,6 @@ import (
 // replaceHyphenWithCamelCase controls viper config name conversion.
 // Set to true if config file uses camelCase instead of hyphenated keys.
 const replaceHyphenWithCamelCase = false
-
-// Package-level state for CLI flags and configuration.
-// These are bound to CLI flags and persisted via Viper.
-var (
-	colorEnabled      bool
-	highlight         string
-	liveMode          bool
-	liveInterval      int
-	twelveHourEnabled bool
-	date              string
-	timezones         []string
-	v                 = viper.New()
-	log               = logger.GetLogger()
-)
 
 // timezoneDetail holds timezone information for display.
 type timezoneDetail struct {
@@ -55,12 +42,171 @@ type timezoneDetail struct {
 // timezoneDetails is a slice of timezoneDetail for table rendering.
 type timezoneDetails []timezoneDetail
 
+// NewRootCmd creates and returns a new root command with all flags and subcommands configured.
+// Each call returns a fresh instance for test isolation.
+func NewRootCmd() *cobra.Command {
+	// Flag variables local to this command instance
+	var (
+		colorEnabled      bool
+		highlight         string
+		liveMode          bool
+		liveInterval      int
+		twelveHourEnabled bool
+		date              string
+		timezones         []string
+		v                 = viper.New()
+		log               = logger.GetLogger()
+	)
+
+	rootCmd := &cobra.Command{
+		Use:     "timeBuddy",
+		Version: "v2.0.2",
+		Short:   "CLI version of World Time Buddy",
+		Long: `timeBuddy is a Command Line Interface (CLI) tool designed to display the current time across multiple time zones. This
+tool is particularly useful for scheduling meetings with participants in various time zones. By default, timeBuddy
+includes your local time zone in its output. You can exclude your local time zone using the --exclude-local flag.
+
+timeBuddy saves your most recent time zone selections in a configuration file. This feature ensures that you need to
+specify your preferred time zones only once. The order in which you specify the time zones is retained and reflected in
+the table output. You can find the configuration file at the following locations:
+
+  - Linux/Mac: $HOME/.config/.timeBuddy.yaml
+  - Windows: %APPDATA%\.timeBuddy.yaml
+
+Examples:
+
+  # Display your local time zone or those saved in the config file from your last session:
+  $ timeBuddy
+
+  # Display the current time for a selection of time zones:
+  $ timeBuddy --timezone America/New_York --timezone Europe/Vilnius --timezone Australia/Sydney
+
+  # Display Time for a specific date and highlight 3pm AEDT(useful for Daylight Saving Time changes):
+  $ timeBuddy --date 2023-11-05 --highlight 15+11
+
+  # Exclude your local time zone from the output:
+   $ timeBuddy --exclude-local --timezone --timezone Europe/London --timezone Asia/Tokyo
+
+  # Enable colorized table output:
+   $ timeBuddy --color
+
+  # Enable live mode to continuously update the display:
+   $ timeBuddy --live
+
+  # Enable live mode with a custom refresh interval (every 5 seconds):
+   $ timeBuddy --live --interval 5
+
+Learn More:
+  To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
+	}
+
+	// validateArgs validates command arguments before execution.
+	validateArgs := func(cmd *cobra.Command, args []string) error {
+		log.Trace().Msg("validating command arguments")
+
+		if err := validateLiveDateExclusion(cmd); err != nil {
+			return err
+		}
+
+		if cmd.Flags().Changed("date") {
+			if _, err := time.Parse(time.DateOnly, date); err != nil {
+				return fmt.Errorf("invalid date %q: %w", date, err)
+			}
+		}
+
+		if !cmd.Flags().Changed("exclude-local") {
+			if err := addLocalTimezone(&timezones, log); err != nil {
+				return err
+			}
+		}
+
+		timezones = deduplicateSlice(timezones)
+		log.Debug().Strs("timezones", timezones).Msg("timezones after validation")
+		return nil
+	}
+
+	// persistentPreRunE initializes configuration before command execution.
+	persistentPreRunE := func(cmd *cobra.Command, args []string) error {
+		return initializeConfig(cmd, v, log)
+	}
+
+	// runRoot executes the main timeBuddy command logic.
+	runRoot := func(cmd *cobra.Command, args []string) error {
+		if wizardMode, _ := cmd.Flags().GetBool("wizard"); wizardMode {
+			return handleWizardMode(v, log, &timezones)
+		}
+
+		for k, val := range v.AllSettings() {
+			log.Debug().Str(k, fmt.Sprintf("%v", val)).Msg("viper setting")
+		}
+
+		saveUserPreferences(v, log, colorEnabled, twelveHourEnabled, timezones)
+
+		if liveMode {
+			return runLiveMode(cmd, log, &timezones, &date, colorEnabled, twelveHourEnabled, &highlight)
+		}
+
+		zones, err := processTimezones(timezones, date, log)
+		if err != nil {
+			return err
+		}
+
+		highlightHour, err := processHighlightFlag(cmd, zones, highlight, log)
+		if err != nil {
+			return fmt.Errorf("invalid highlight specification: %w", err)
+		}
+
+		printTimeTable(zones, colorEnabled, highlightHour, twelveHourEnabled, date, log)
+		return nil
+	}
+
+	rootCmd.Args = validateArgs
+	rootCmd.PersistentPreRunE = persistentPreRunE
+	rootCmd.RunE = runRoot
+
+	rootCmd.SetVersionTemplate(`{{printf "timeBuddy %s\n" .Version}}`)
+
+	// Display flags
+	rootCmd.Flags().BoolVarP(&colorEnabled, "color", "c", false, "enable colorized table output. If previously enabled, use --color=false to disable it,")
+	rootCmd.Flags().StringVarP(&date, "date", "d", time.Now().Format(time.DateOnly), "``date to use for time conversion. Expects YYYY-MM-DD format. Defaults to current date/time.")
+	rootCmd.Flags().StringVarP(&highlight, "highlight", "H", "", "highlight hour column (0-23), optionally with UTC offset (e.g., '15+11' or '9-4')")
+	rootCmd.Flags().BoolVarP(&twelveHourEnabled, "twelve-hour", "t", false, "use 12-hour time format instead of 24-hour. If previously enabled, use --twelve-hour=false to disable it.")
+
+	// Live mode flags
+	rootCmd.Flags().BoolVarP(&liveMode, "live", "l", false, "enable live mode to continuously refresh the time display (press Ctrl+C to exit)")
+	rootCmd.Flags().IntVarP(&liveInterval, "interval", "i", 1, "refresh interval in seconds for live mode")
+
+	// Timezone selection flags
+	rootCmd.Flags().BoolP("exclude-local", "x", false, "disable default behavior of including local timezone in output")
+	rootCmd.Flags().BoolP("wizard", "w", false, "launch interactive timezone selector wizard")
+	rootCmd.Flags().StringArrayVarP(&timezones, "timezone", "z", []string{}, "``timezone to use for time conversion. Accepts timezone name, like America/New_York. Can be used multiple times.")
+
+	// Logging flags
+	rootCmd.PersistentFlags().CountP("verbose", "v", "``increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace")
+
+	// Mutual exclusion
+	rootCmd.MarkFlagsMutuallyExclusive("live", "date")
+
+	// Tab completion for timezone flag
+	if err := rootCmd.RegisterFlagCompletionFunc("timezone", completeTimezone); err != nil {
+		log.Error().Err(err).Msg("failed to register timezone completion")
+	}
+
+	// Add subcommands
+	rootCmd.AddCommand(NewListCmd())
+	rootCmd.AddCommand(NewWizardCmd(v))
+
+	return rootCmd
+}
+
 // initializeConfig initializes Viper configuration for the root command.
 // It sets up the config file path, reads existing config, creates a new one
 // if none exists, and binds command flags to configuration values.
-func initializeConfig(cmd *cobra.Command) error {
+func initializeConfig(cmd *cobra.Command, v *viper.Viper, log *zerolog.Logger) error {
 	verboseCount, _ := cmd.Flags().GetCount("verbose")
 	logger.SetLogLevel(verboseCount)
+
+	log.Info().Int("verbosity", verboseCount).Msg("initializing configuration")
 
 	configName := ".timeBuddy"
 	configType := "yaml"
@@ -73,28 +219,31 @@ func initializeConfig(cmd *cobra.Command) error {
 	}
 
 	configFile := filepath.Join(configPath, configName+"."+configType)
-	log.Debug().Str("configPath", configPath).Str("configFile", configFile).Send()
+	log.Debug().Str("configPath", configPath).Str("configFile", configFile).Msg("config file location")
 
 	v.AddConfigPath(configPath)
 	v.SetConfigFile(configFile)
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			log.Info().Str("configFile", configFile).Msg("creating new config file")
 			if writeErr := v.SafeWriteConfigAs(configFile); writeErr != nil {
 				log.Error().Err(writeErr).Msg("failed to create config file")
 			} else {
-				log.Info().Str("configFile", configFile).Msg("new config file created")
+				log.Info().Str("configFile", configFile).Msg("config file created successfully")
 			}
 		} else {
-			log.Error().Str("viper", err.Error()).Send()
+			log.Error().Err(err).Msg("failed to read config file")
 		}
+	} else {
+		log.Debug().Str("configFile", configFile).Msg("config file loaded")
 	}
 
 	v.SetEnvPrefix("TIMEBUDDY")
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv()
 
-	bindFlags(cmd, v)
+	bindFlags(cmd, v, log)
 
 	return nil
 }
@@ -109,38 +258,42 @@ func getConfigPath() string {
 
 // bindFlags binds command flags to Viper configuration values.
 // It applies config file values to flags that haven't been explicitly set.
-func bindFlags(cmd *cobra.Command, v *viper.Viper) {
+func bindFlags(cmd *cobra.Command, v *viper.Viper, log *zerolog.Logger) {
+	log.Debug().Msg("binding flags to viper config")
+
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		configName := f.Name
 		if replaceHyphenWithCamelCase {
 			configName = strings.ReplaceAll(f.Name, "-", "")
 		}
 
-		log.Debug().Str("flag", f.Name).Str("configName", configName).Msg("binding flag to viper config")
+		log.Trace().Str("flag", f.Name).Str("configName", configName).Bool("changed", f.Changed).Msg("processing flag")
 
 		if f.Changed || !v.IsSet(configName) {
 			return
 		}
 
 		val := v.Get(configName)
-		if arr, ok := val.([]interface{}); ok {
+		if arr, ok := val.([]any); ok {
 			for _, item := range arr {
 				if err := cmd.Flags().Set(f.Name, fmt.Sprintf("%v", item)); err != nil {
-					log.Error().Str("viper", err.Error()).Send()
+					log.Error().Err(err).Str("flag", f.Name).Msg("failed to set array flag from config")
 				}
 			}
 			return
 		}
 
 		if err := cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val)); err != nil {
-			log.Error().Str("viper", err.Error()).Send()
+			log.Error().Err(err).Str("flag", f.Name).Msg("failed to set flag from config")
 		}
 	})
 }
 
 // getZoneInfo returns timezone details for the given timezone and date.
 // It validates the timezone and date, then computes offset and hours.
-func getZoneInfo(timezone string, date string) (timezoneDetail, error) {
+func getZoneInfo(timezone string, date string, log *zerolog.Logger) (timezoneDetail, error) {
+	log.Trace().Str("timezone", timezone).Str("date", date).Msg("getting zone info")
+
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
 		return timezoneDetail{}, fmt.Errorf("invalid timezone %q: %w", timezone, err)
@@ -171,9 +324,9 @@ func getZoneInfo(timezone string, date string) (timezoneDetail, error) {
 		Str("abbreviation", zone.abbreviation).
 		Str("currentTime", zone.currentTime.String()).
 		Int("offsetMinutes", zone.offsetMinutes).
-		Send()
+		Msg("zone info computed")
 
-	hours, err := getHours(date, loc)
+	hours, err := getHours(date, loc, log)
 	if err != nil {
 		return timezoneDetail{}, fmt.Errorf("failed to get hours for timezone %q: %w", timezone, err)
 	}
@@ -184,7 +337,9 @@ func getZoneInfo(timezone string, date string) (timezoneDetail, error) {
 
 // getHours returns 24 hours for the given date in the specified timezone.
 // Each hour represents the time at that UTC hour converted to the location.
-func getHours(date string, location *time.Location) ([]time.Time, error) {
+func getHours(date string, location *time.Location, log *zerolog.Logger) ([]time.Time, error) {
+	log.Trace().Str("date", date).Str("location", location.String()).Msg("computing hours for day")
+
 	d, err := time.ParseInLocation(time.DateOnly, date, time.UTC)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse date %q: %w", date, err)
@@ -201,8 +356,8 @@ func getHours(date string, location *time.Location) ([]time.Time, error) {
 
 // formatHours formats the hours for display in the time table.
 // When twelveHourEnabled is true, uses 12-hour format with am/pm.
-func formatHours(z timezoneDetail, twelveHourEnabled bool) []interface{} {
-	hours := make([]interface{}, len(z.hours))
+func formatHours(z timezoneDetail, twelveHourEnabled bool) []any {
+	hours := make([]any, len(z.hours))
 	for i, t := range z.hours {
 		hour24 := t.Hour()
 		if hour24 == 0 {
@@ -262,6 +417,10 @@ func formatRowLabel(z timezoneDetail, date, offset string) string {
 // parseOffset parses a highlight string like "hour+offset" or "hour-offset".
 // Returns the hour (0-23), offset in minutes, and any parsing error.
 func parseOffset(input string) (hour int, offsetMinutes int, err error) {
+	if input == "" {
+		return 0, 0, fmt.Errorf("empty highlight value")
+	}
+
 	sep := strings.IndexAny(input[1:], "+-")
 	if sep != -1 {
 		sep++ // account for slicing from index 1
@@ -423,7 +582,9 @@ func hasTimezoneWithOffset(zones timezoneDetails, offsetMinutes int) bool {
 
 // printTimeTable renders the timezone table to stdout.
 // Uses go-pretty for table formatting with optional color styling.
-func printTimeTable(zones timezoneDetails, colorEnabled bool, highlightHour int) {
+func printTimeTable(zones timezoneDetails, colorEnabled bool, highlightHour int, twelveHourEnabled bool, date string, log *zerolog.Logger) {
+	log.Debug().Int("zoneCount", len(zones)).Bool("color", colorEnabled).Int("highlightHour", highlightHour).Msg("rendering time table")
+
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
 
@@ -454,11 +615,12 @@ func printTimeTable(zones timezoneDetails, colorEnabled bool, highlightHour int)
 		hours := formatHours(z, twelveHourEnabled)
 		offset := formatOffset(z)
 		rowLabel := formatRowLabel(z, date, offset)
-		row := append([]interface{}{rowLabel}, hours...)
+		row := append([]any{rowLabel}, hours...)
 		t.AppendRow(row)
 	}
 
 	t.Render()
+	log.Info().Int("zoneCount", len(zones)).Msg("time table rendered")
 }
 
 // configureColoredTable applies colored style to the table.
@@ -493,141 +655,45 @@ func deduplicateSlice(s []string) []string {
 	return result
 }
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:     "timeBuddy",
-	Version: "v2.0.1",
-	Short:   "CLI version of World Time Buddy",
-	Long: `timeBuddy is a Command Line Interface (CLI) tool designed to display the current time across multiple time zones. This
-tool is particularly useful for scheduling meetings with participants in various time zones. By default, timeBuddy
-includes your local time zone in its output. You can exclude your local time zone using the --exclude-local flag.
-
-timeBuddy saves your most recent time zone selections in a configuration file. This feature ensures that you need to
-specify your preferred time zones only once. The order in which you specify the time zones is retained and reflected in
-the table output. You can find the configuration file at the following locations:
-
-  - Linux/Mac: $HOME/.config/.timeBuddy.yaml
-  - Windows: %APPDATA%\.timeBuddy.yaml
-
-Examples:
-
-  # Display your local time zone or those saved in the config file from your last session:
-  $ timeBuddy
-
-  # Display the current time for a selection of time zones:
-  $ timeBuddy --timezone America/New_York --timezone Europe/Vilnius --timezone Australia/Sydney
-
-  # Display Time for a specific date and highlight 3pm AEDT(useful for Daylight Saving Time changes):
-  $ timeBuddy --date 2023-11-05 --highlight 15+11
-
-  # Exclude your local time zone from the output:
-   $ timeBuddy --exclude-local --timezone --timezone Europe/London --timezone Asia/Tokyo
-
-  # Enable colorized table output:
-   $ timeBuddy --color
-
-  # Enable live mode to continuously update the display:
-   $ timeBuddy --live
-
-  # Enable live mode with a custom refresh interval (every 5 seconds):
-   $ timeBuddy --live --interval 5
-
-Learn More:
-  To submit feature requests, bugs, or to check for new versions, visit https://github.com/JakeTRogers/timeBuddy`,
-	Args:              validateArgs,
-	PersistentPreRunE: persistentPreRunE,
-	RunE:              runRoot,
-}
-
-// validateArgs validates command arguments before execution.
-func validateArgs(cmd *cobra.Command, args []string) error {
-	if err := validateLiveDateExclusion(cmd); err != nil {
-		return err
-	}
-
-	if cmd.Flags().Changed("date") {
-		if _, err := time.Parse(time.DateOnly, date); err != nil {
-			return fmt.Errorf("invalid date %q: %w", date, err)
-		}
-	}
-
-	if !cmd.Flags().Changed("exclude-local") {
-		if err := addLocalTimezone(); err != nil {
-			return err
-		}
-	}
-
-	timezones = deduplicateSlice(timezones)
-	return nil
-}
-
 // addLocalTimezone adds the local timezone to the timezones list if not present.
-func addLocalTimezone() error {
+func addLocalTimezone(timezones *[]string, log *zerolog.Logger) error {
 	ltz, err := time.LoadLocation("Local")
 	if err != nil {
 		return fmt.Errorf("failed to load local timezone: %w", err)
 	}
 
-	for _, tz := range timezones {
+	for _, tz := range *timezones {
 		if tz == ltz.String() {
+			log.Debug().Str("localTimezone", ltz.String()).Msg("local timezone already in list")
 			return nil
 		}
 	}
 
-	timezones = append([]string{ltz.String()}, timezones...)
-	return nil
-}
-
-// persistentPreRunE initializes configuration before command execution.
-func persistentPreRunE(cmd *cobra.Command, args []string) error {
-	return initializeConfig(cmd)
-}
-
-// runRoot executes the main timeBuddy command logic.
-func runRoot(cmd *cobra.Command, args []string) error {
-	if wizardMode, _ := cmd.Flags().GetBool("wizard"); wizardMode {
-		return handleWizardMode()
-	}
-
-	for k, val := range v.AllSettings() {
-		log.Debug().Str(k, fmt.Sprintf("%v", val)).Msg("viper")
-	}
-
-	saveUserPreferences()
-
-	if liveMode {
-		return runLiveMode(cmd)
-	}
-
-	zones, err := processTimezones()
-	if err != nil {
-		return err
-	}
-
-	highlightHour, err := processHighlightFlag(cmd, zones)
-	if err != nil {
-		return fmt.Errorf("invalid highlight specification: %w", err)
-	}
-
-	printTimeTable(zones, colorEnabled, highlightHour)
+	log.Debug().Str("localTimezone", ltz.String()).Msg("adding local timezone to list")
+	*timezones = append([]string{ltz.String()}, *timezones...)
 	return nil
 }
 
 // handleWizardMode runs the interactive timezone selector.
-func handleWizardMode() error {
-	selected, err := runWizard()
+func handleWizardMode(v *viper.Viper, log *zerolog.Logger, timezones *[]string) error {
+	log.Info().Msg("launching interactive timezone wizard")
+
+	selected, err := runWizard(v, log)
 	if err != nil {
 		return fmt.Errorf("wizard failed: %w", err)
 	}
 
 	if selected == nil {
+		log.Info().Msg("wizard cancelled, no changes saved")
 		return nil
 	}
 
-	timezones = selected
+	*timezones = selected
 	v.Set("timezone", selected)
 	if err := v.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("failed to save config")
+	} else {
+		log.Info().Int("count", len(selected)).Msg("timezone selections saved")
 	}
 	return nil
 }
@@ -638,14 +704,17 @@ func clearScreen() {
 }
 
 // runLiveMode continuously refreshes the time table at the configured interval.
-func runLiveMode(cmd *cobra.Command) error {
+func runLiveMode(cmd *cobra.Command, log *zerolog.Logger, timezones *[]string, date *string, colorEnabled, twelveHourEnabled bool, highlight *string) error {
+	liveInterval, _ := cmd.Flags().GetInt("interval")
+	log.Info().Int("interval", liveInterval).Msg("starting live mode")
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	ticker := time.NewTicker(time.Duration(liveInterval) * time.Second)
 	defer ticker.Stop()
 
-	if err := renderTimeTable(cmd); err != nil {
+	if err := renderTimeTable(cmd, log, *timezones, *date, colorEnabled, twelveHourEnabled, *highlight); err != nil {
 		return err
 	}
 
@@ -654,11 +723,12 @@ func runLiveMode(cmd *cobra.Command) error {
 	for {
 		select {
 		case <-sigChan:
+			log.Info().Msg("exiting live mode")
 			fmt.Println("\nExiting live mode...")
 			return nil
 		case <-ticker.C:
 			clearScreen()
-			if err := renderTimeTable(cmd); err != nil {
+			if err := renderTimeTable(cmd, log, *timezones, *date, colorEnabled, twelveHourEnabled, *highlight); err != nil {
 				log.Error().Err(err).Msg("failed to render time table")
 			}
 			fmt.Println("\nLive mode active. Press Ctrl+C to exit.")
@@ -667,53 +737,23 @@ func runLiveMode(cmd *cobra.Command) error {
 }
 
 // renderTimeTable processes timezones and renders the table.
-func renderTimeTable(cmd *cobra.Command) error {
-	zones, err := processTimezones()
+func renderTimeTable(cmd *cobra.Command, log *zerolog.Logger, timezones []string, date string, colorEnabled, twelveHourEnabled bool, highlight string) error {
+	zones, err := processTimezones(timezones, date, log)
 	if err != nil {
 		return err
 	}
-	highlightHour, err := processHighlightFlag(cmd, zones)
+	highlightHour, err := processHighlightFlag(cmd, zones, highlight, log)
 	if err != nil {
 		return fmt.Errorf("invalid highlight specification: %w", err)
 	}
-	printTimeTable(zones, colorEnabled, highlightHour)
+	printTimeTable(zones, colorEnabled, highlightHour, twelveHourEnabled, date, log)
 	return nil
 }
 
 // Execute runs the root command. Called from main.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := NewRootCmd().Execute(); err != nil {
 		os.Exit(1)
-	}
-}
-
-func init() {
-	rootCmd.SetVersionTemplate(`{{printf "timeBuddy %s\n" .Version}}`)
-
-	// Display flags
-	rootCmd.Flags().BoolVarP(&colorEnabled, "color", "c", false, "enable colorized table output. If previously enabled, use --color=false to disable it,")
-	rootCmd.Flags().StringVarP(&date, "date", "d", time.Now().Format(time.DateOnly), "``date to use for time conversion. Expects YYYY-MM-DD format. Defaults to current date/time.")
-	rootCmd.Flags().StringVarP(&highlight, "highlight", "H", "", "highlight hour column (0-23), optionally with UTC offset (e.g., '15+11' or '9-4')")
-	rootCmd.Flags().BoolVarP(&twelveHourEnabled, "twelve-hour", "t", false, "use 12-hour time format instead of 24-hour. If previously enabled, use --twelve-hour=false to disable it.")
-
-	// Live mode flags
-	rootCmd.Flags().BoolVarP(&liveMode, "live", "l", false, "enable live mode to continuously refresh the time display (press Ctrl+C to exit)")
-	rootCmd.Flags().IntVarP(&liveInterval, "interval", "i", 1, "refresh interval in seconds for live mode")
-
-	// Timezone selection flags
-	rootCmd.Flags().BoolP("exclude-local", "x", false, "disable default behavior of including local timezone in output")
-	rootCmd.Flags().BoolP("wizard", "w", false, "launch interactive timezone selector wizard")
-	rootCmd.Flags().StringArrayVarP(&timezones, "timezone", "z", []string{}, "``timezone to use for time conversion. Accepts timezone name, like America/New_York. Can be used multiple times.")
-
-	// Logging flags
-	rootCmd.PersistentFlags().CountP("verbose", "v", "``increase logging verbosity, 1=warn, 2=info, 3=debug, 4=trace")
-
-	// Mutual exclusion
-	rootCmd.MarkFlagsMutuallyExclusive("live", "date")
-
-	// Tab completion for timezone flag
-	if err := rootCmd.RegisterFlagCompletionFunc("timezone", completeTimezone); err != nil {
-		log.Error().Err(err).Send()
 	}
 }
 
@@ -723,39 +763,50 @@ func completeTimezone(cmd *cobra.Command, args []string, toComplete string) ([]s
 }
 
 // saveUserPreferences persists current preferences to the config file.
-func saveUserPreferences() {
+func saveUserPreferences(v *viper.Viper, log *zerolog.Logger, colorEnabled, twelveHourEnabled bool, timezones []string) {
+	log.Debug().Bool("color", colorEnabled).Bool("twelveHour", twelveHourEnabled).Int("timezoneCount", len(timezones)).Msg("saving user preferences")
+
 	v.Set("color", colorEnabled)
 	v.Set("timezone", timezones)
 	v.Set("twelve-hour", twelveHourEnabled)
 
 	if err := v.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("failed to save preferences")
+	} else {
+		log.Debug().Msg("preferences saved successfully")
 	}
 }
 
 // processTimezones collects timezone information for all configured timezones.
-func processTimezones() (timezoneDetails, error) {
+func processTimezones(timezones []string, date string, log *zerolog.Logger) (timezoneDetails, error) {
+	log.Debug().Int("count", len(timezones)).Msg("processing timezones")
+
 	zones := make(timezoneDetails, 0, len(timezones))
 	for _, tz := range timezones {
-		zone, err := getZoneInfo(tz, date)
+		zone, err := getZoneInfo(tz, date, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process timezone %q: %w", tz, err)
 		}
 		zones = append(zones, zone)
 	}
+
+	log.Info().Int("count", len(zones)).Msg("timezones processed successfully")
 	return zones, nil
 }
 
 // processHighlightFlag parses and validates the highlight flag if provided.
-func processHighlightFlag(cmd *cobra.Command, zones timezoneDetails) (int, error) {
+func processHighlightFlag(cmd *cobra.Command, zones timezoneDetails, highlight string, log *zerolog.Logger) (int, error) {
 	if !cmd.Flags().Changed("highlight") {
 		return -1, nil
 	}
+
+	log.Debug().Str("highlight", highlight).Msg("processing highlight flag")
 
 	highlightHour, err := parseHighlightFlag(highlight, zones)
 	if err != nil {
 		return -1, fmt.Errorf("invalid highlight specification: %w", err)
 	}
 
+	log.Debug().Int("highlightHour", highlightHour).Msg("highlight column calculated")
 	return highlightHour, nil
 }
