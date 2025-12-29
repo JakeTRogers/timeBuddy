@@ -6,11 +6,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/JakeTRogers/timeBuddy/logger"
 	"github.com/spf13/cobra"
 )
-
-// area holds the flag value for the --locations flag.
-var area string
 
 // timezonesAll contains all known IANA timezone identifiers.
 var timezonesAll = []string{
@@ -591,11 +589,17 @@ func listAreas() map[string][]string {
 	return tzAreas
 }
 
-// listCmd lists available timezones, areas, or locations.
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List time zones",
-	Long: `List all timezones, timezone areas, or all timezones for a specific area.
+// NewListCmd creates and returns a new list command.
+// Each call returns a fresh instance for test isolation.
+func NewListCmd() *cobra.Command {
+	// Flag variable local to this command instance
+	var area string
+	log := logger.GetLogger()
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List time zones",
+		Long: `List all timezones, timezone areas, or all timezones for a specific area.
 
 The timezones are listed in the format: Area/Location, i.e. America/New_York, Europe/London, etc.
 
@@ -612,38 +616,52 @@ Examples:
 
   # List all timezones in a specific area:
   $ timeBuddy list --locations America`,
-	Args: validateListArgs,
-	RunE: runList,
-}
+	}
 
-// validateListArgs validates the list command arguments.
-func validateListArgs(cmd *cobra.Command, args []string) error {
-	if !cmd.Flags().Changed("locations") {
+	// validateListArgs validates the list command arguments.
+	validateListArgs := func(cmd *cobra.Command, args []string) error {
+		if !cmd.Flags().Changed("locations") {
+			return nil
+		}
+
+		log.Trace().Str("area", area).Msg("validating area name")
+		tzAreas := listAreas()
+		if _, ok := tzAreas[area]; !ok {
+			return fmt.Errorf("invalid area name: %q", area)
+		}
 		return nil
 	}
 
-	tzAreas := listAreas()
-	if _, ok := tzAreas[area]; !ok {
-		return fmt.Errorf("invalid area name: %q", area)
-	}
-	return nil
-}
+	// runList executes the list command based on flags.
+	runList := func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("areas") {
+			log.Debug().Msg("listing timezone areas")
+			return printAreas()
+		}
 
-// runList executes the list command based on flags.
-func runList(cmd *cobra.Command, args []string) error {
-	if cmd.Flags().Changed("areas") {
-		return printAreas()
+		if cmd.Flags().Changed("locations") {
+			log.Debug().Str("area", area).Msg("listing locations for area")
+			return printLocations(area)
+		}
+
+		if cmd.Flags().Changed("timezones") {
+			log.Debug().Msg("listing all timezones")
+			return printAllTimezones()
+		}
+
+		return cmd.Help()
 	}
 
-	if cmd.Flags().Changed("locations") {
-		return printLocations(cmd)
-	}
+	listCmd.Args = validateListArgs
+	listCmd.RunE = runList
 
-	if cmd.Flags().Changed("timezones") {
-		return printAllTimezones()
-	}
+	listCmd.Flags().BoolP("areas", "a", false, "list available timezone areas. i.e. America, Europe, etc.")
+	listCmd.Flags().StringVarP(&area, "locations", "l", "", "``list timezones for the area requested, i.e. 'America' would show New_York, Denver, etc.")
+	listCmd.Flags().BoolP("timezones", "t", false, "list all timezones")
 
-	return cmd.Help()
+	listCmd.MarkFlagsMutuallyExclusive("areas", "locations", "timezones")
+
+	return listCmd
 }
 
 // printAreas prints all timezone area names.
@@ -662,9 +680,8 @@ func printAreas() error {
 }
 
 // printLocations prints all timezones for the specified area.
-func printLocations(cmd *cobra.Command) error {
+func printLocations(areaName string) error {
 	tzAreas := listAreas()
-	areaName := cmd.Flag("locations").Value.String()
 
 	for _, location := range tzAreas[areaName] {
 		fmt.Printf("%s/%s\n", areaName, location)
@@ -678,14 +695,4 @@ func printAllTimezones() error {
 		fmt.Println(tz)
 	}
 	return nil
-}
-
-func init() {
-	rootCmd.AddCommand(listCmd)
-
-	listCmd.Flags().BoolP("areas", "a", false, "list available timezone areas. i.e. America, Europe, etc.")
-	listCmd.Flags().StringVarP(&area, "locations", "l", "", "``list timezones for the area requested, i.e. 'America' would show New_York, Denver, etc.")
-	listCmd.Flags().BoolP("timezones", "t", false, "list all timezones")
-
-	listCmd.MarkFlagsMutuallyExclusive("areas", "locations", "timezones")
 }

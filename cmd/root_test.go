@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JakeTRogers/timeBuddy/logger"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -61,7 +62,7 @@ func ptr[T any](value T) *T {
 	return &value
 }
 
-func toStrings(values []interface{}) []string {
+func toStrings(values []any) []string {
 	result := make([]string, len(values))
 	for i, v := range values {
 		result[i] = fmt.Sprint(v)
@@ -88,7 +89,28 @@ func makeTimezoneDetail(name string, offsetMinutes int, halfHour bool) timezoneD
 	}
 }
 
+func Test_NewRootCmd(t *testing.T) {
+	t.Parallel()
+	cmd := NewRootCmd()
+	if cmd == nil {
+		t.Fatal("NewRootCmd() should not return nil")
+	}
+	if cmd.Use != "timeBuddy" {
+		t.Errorf("Expected Use to be 'timeBuddy', got %s", cmd.Use)
+	}
+}
+
+func Test_NewRootCmd_independentInstances(t *testing.T) {
+	t.Parallel()
+	cmd1 := NewRootCmd()
+	cmd2 := NewRootCmd()
+	if cmd1 == cmd2 {
+		t.Error("NewRootCmd() should return independent instances")
+	}
+}
+
 func Test_parseOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		input          string
@@ -163,6 +185,7 @@ func Test_parseOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			hour, offset, err := parseOffset(tt.input)
 
 			assertError(t, err, tt.expectError, "")
@@ -177,6 +200,7 @@ func Test_parseOffset(t *testing.T) {
 }
 
 func Test_parseHighlightFlag(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		highlight      string
@@ -246,6 +270,7 @@ func Test_parseHighlightFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			zones := tt.zones
 			if zones == nil {
 				zones = testZones
@@ -273,6 +298,7 @@ func Test_parseHighlightFlag(t *testing.T) {
 }
 
 func Test_hasTimezoneWithOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		offset   int
@@ -307,6 +333,7 @@ func Test_hasTimezoneWithOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := hasTimezoneWithOffset(testZones, tt.offset)
 			assertEqual(t, result, tt.expected, "Expected %v, got %v", tt.expected, result)
 		})
@@ -314,6 +341,7 @@ func Test_hasTimezoneWithOffset(t *testing.T) {
 }
 
 func Test_deduplicateSlice(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []string
@@ -348,6 +376,7 @@ func Test_deduplicateSlice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := deduplicateSlice(tt.input)
 			if !slices.Equal(result, tt.expected) {
 				t.Errorf("Expected %v, got %v", tt.expected, result)
@@ -357,6 +386,7 @@ func Test_deduplicateSlice(t *testing.T) {
 }
 
 func Test_formatOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		offset   int
@@ -372,6 +402,7 @@ func Test_formatOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			zone := makeTimezoneDetail("Test/Zone", tt.offset, tt.halfHour)
 			result := formatOffset(zone)
 			assertEqual(t, result, tt.expected, "Expected %s, got %s", tt.expected, result)
@@ -380,6 +411,7 @@ func Test_formatOffset(t *testing.T) {
 }
 
 func Test_validateLiveDateExclusion(t *testing.T) {
+	t.Parallel()
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("live", false, "")
 	cmd.Flags().String("date", time.Now().Format(time.DateOnly), "")
@@ -407,6 +439,7 @@ func Test_validateLiveDateExclusion(t *testing.T) {
 }
 
 func Test_formatRowLabel(t *testing.T) {
+	t.Parallel()
 	today := time.Now().Format(time.DateOnly)
 	pastDate := "2024-06-15"
 
@@ -438,6 +471,7 @@ func Test_formatRowLabel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			zone := timezoneDetail{
 				name:         tt.zoneName,
 				abbreviation: tt.abbrev,
@@ -454,6 +488,7 @@ func Test_formatRowLabel(t *testing.T) {
 }
 
 func Test_formatHours(t *testing.T) {
+	t.Parallel()
 	zone := makeTimezoneDetail("America/New_York", -5, false)
 
 	tests := []struct {
@@ -479,6 +514,7 @@ func Test_formatHours(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := formatHours(zone, tt.twelveHourEnabled)
 			expected := tt.expected(zone)
 			if !slices.Equal(toStrings(result), expected) {
@@ -489,6 +525,9 @@ func Test_formatHours(t *testing.T) {
 }
 
 func Test_getZoneInfo(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
 	tests := []struct {
 		name     string
 		timezone string
@@ -528,7 +567,8 @@ func Test_getZoneInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			zone, err := getZoneInfo(tt.timezone, tt.date)
+			t.Parallel()
+			zone, err := getZoneInfo(tt.timezone, tt.date, log)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -538,6 +578,9 @@ func Test_getZoneInfo(t *testing.T) {
 }
 
 func Test_getZoneInfo_errors(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
 	tests := []struct {
 		name          string
 		timezone      string
@@ -560,7 +603,8 @@ func Test_getZoneInfo_errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := getZoneInfo(tt.timezone, tt.date)
+			t.Parallel()
+			_, err := getZoneInfo(tt.timezone, tt.date, log)
 			if err == nil {
 				t.Fatal("expected error but got none")
 			}
@@ -572,12 +616,15 @@ func Test_getZoneInfo_errors(t *testing.T) {
 }
 
 func Test_getHours(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
 	loc, err := time.LoadLocation("UTC")
 	if err != nil {
 		t.Fatalf("Failed to load UTC location: %v", err)
 	}
 
-	hours, err := getHours("2024-06-15", loc)
+	hours, err := getHours("2024-06-15", loc, log)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -596,12 +643,15 @@ func Test_getHours(t *testing.T) {
 }
 
 func Test_getHours_invalidDate(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
 	loc, err := time.LoadLocation("UTC")
 	if err != nil {
 		t.Fatalf("Failed to load UTC location: %v", err)
 	}
 
-	_, err = getHours("invalid-date", loc)
+	_, err = getHours("invalid-date", loc, log)
 	if err == nil {
 		t.Fatal("expected error for invalid date but got none")
 	}
@@ -611,14 +661,8 @@ func Test_getHours_invalidDate(t *testing.T) {
 }
 
 func Test_initializeConfig(t *testing.T) {
-	// Save original viper instance
-	originalV := v
-	t.Cleanup(func() {
-		v = originalV
-	})
-
-	// Create a fresh viper instance for this test
-	v = viper.New()
+	log := logger.GetLogger()
+	v := viper.New()
 
 	// Create a temporary directory for test config
 	tempDir := t.TempDir()
@@ -631,34 +675,24 @@ func Test_initializeConfig(t *testing.T) {
 		t.Fatalf("Failed to create config directory: %v", err)
 	}
 
+	// Create a test command with required flags
+	cmd := NewRootCmd()
+
 	// Test initialization - just verify it doesn't error
-	err := initializeConfig(rootCmd)
+	err := initializeConfig(cmd, v, log)
 	if err != nil {
 		t.Errorf("initializeConfig failed: %v", err)
-	}
-
-	// Verify viper is configured correctly (config file may or may not be created
-	// depending on viper's internal state, but the function should not error)
-	if v.ConfigFileUsed() == "" {
-		// Config file path should be set even if file wasn't created
-		t.Log("Config file path not set, which may be expected in test environment")
 	}
 }
 
 // Test_processTimezones tests the processTimezones function
 func Test_processTimezones(t *testing.T) {
-	// Save original timezones
-	originalTimezones := timezones
-	originalDate := date
-	t.Cleanup(func() {
-		timezones = originalTimezones
-		date = originalDate
-	})
+	t.Parallel()
+	log := logger.GetLogger()
+	timezones := []string{"UTC", "America/New_York"}
+	date := testTime.Format(time.DateOnly)
 
-	timezones = []string{"UTC", "America/New_York"}
-	date = testTime.Format(time.DateOnly)
-
-	zones, err := processTimezones()
+	zones, err := processTimezones(timezones, date, log)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -677,18 +711,12 @@ func Test_processTimezones(t *testing.T) {
 }
 
 func Test_processTimezones_invalidTimezone(t *testing.T) {
-	// Save original timezones
-	originalTimezones := timezones
-	originalDate := date
-	t.Cleanup(func() {
-		timezones = originalTimezones
-		date = originalDate
-	})
+	t.Parallel()
+	log := logger.GetLogger()
+	timezones := []string{"Invalid/Timezone"}
+	date := testTime.Format(time.DateOnly)
 
-	timezones = []string{"Invalid/Timezone"}
-	date = testTime.Format(time.DateOnly)
-
-	_, err := processTimezones()
+	_, err := processTimezones(timezones, date, log)
 	if err == nil {
 		t.Fatal("expected error for invalid timezone but got none")
 	}
@@ -698,7 +726,9 @@ func Test_processTimezones_invalidTimezone(t *testing.T) {
 }
 
 // Test_processHighlightFlag tests the processHighlightFlag function
-func Test_processHighlightFlag(t *testing.T) {
+func Test_processHighlightFlag_func(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
 	zones := timezoneDetails{
 		{name: "America/New_York", offsetMinutes: -300},
 		{name: "Europe/London", offsetMinutes: 0},
@@ -737,12 +767,7 @@ func Test_processHighlightFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore original highlight value
-			originalHighlight := highlight
-			t.Cleanup(func() { highlight = originalHighlight })
-
-			highlight = tt.highlightVal
-
+			t.Parallel()
 			// Create a mock command for testing
 			cmd := &cobra.Command{}
 			cmd.Flags().String("highlight", "", "test flag")
@@ -752,7 +777,7 @@ func Test_processHighlightFlag(t *testing.T) {
 				}
 			}
 
-			hour, err := processHighlightFlag(cmd, zones)
+			hour, err := processHighlightFlag(cmd, zones, tt.highlightVal, log)
 
 			assertError(t, err, tt.expectError, tt.errorContains)
 			if tt.expectError {
@@ -766,6 +791,8 @@ func Test_processHighlightFlag(t *testing.T) {
 
 // Test_bindFlags tests the bindFlags function
 func Test_bindFlags(t *testing.T) {
+	log := logger.GetLogger()
+
 	// Create a temporary directory for test config
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
@@ -787,7 +814,7 @@ func Test_bindFlags(t *testing.T) {
 	testViper.Set("timezone", "America/New_York")
 
 	// Bind the flags
-	bindFlags(cmd, testViper)
+	bindFlags(cmd, testViper, log)
 
 	// Check that the color flag was set
 	colorFlag := cmd.Flags().Lookup("color")
@@ -806,13 +833,16 @@ func Test_bindFlags(t *testing.T) {
 
 // Test_getHours_halfHourOffset tests getHours with timezones that have 30-minute offsets
 func Test_getHours_halfHourOffset(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
 	// Asia/Kolkata (India) has a +5:30 offset
 	loc, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		t.Skipf("Failed to load Asia/Kolkata location: %v", err)
 	}
 
-	hours, err := getHours("2024-06-15", loc)
+	hours, err := getHours("2024-06-15", loc, log)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -832,6 +862,7 @@ func Test_getHours_halfHourOffset(t *testing.T) {
 
 // Test_formatHours_edgeCases tests formatHours with various edge cases
 func Test_formatHours_edgeCases(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name              string
 		hours             []int
@@ -874,6 +905,7 @@ func Test_formatHours_edgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var hourTimes []time.Time
 			for _, h := range tt.hours {
 				hourTimes = append(hourTimes, time.Date(2024, 6, 15, h, 0, 0, 0, time.UTC))
@@ -896,6 +928,7 @@ func Test_formatHours_edgeCases(t *testing.T) {
 
 // Test_deduplicateSlice_order tests that deduplicateSlice maintains correct order
 func Test_deduplicateSlice_order(t *testing.T) {
+	t.Parallel()
 	input := []string{"first", "second", "first", "third", "second", "fourth"}
 	expected := []string{"first", "second", "third", "fourth"}
 
@@ -908,6 +941,7 @@ func Test_deduplicateSlice_order(t *testing.T) {
 
 // Test_parseColonOffset tests the parseColonOffset helper function
 func Test_parseColonOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		input           string
@@ -958,6 +992,7 @@ func Test_parseColonOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parseColonOffset(tt.input)
 
 			assertError(t, err, tt.expectError, tt.errorContains)
@@ -972,6 +1007,7 @@ func Test_parseColonOffset(t *testing.T) {
 
 // Test_parseDecimalOffset tests the parseDecimalOffset helper function
 func Test_parseDecimalOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		input           string
@@ -1020,6 +1056,7 @@ func Test_parseDecimalOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parseDecimalOffset(tt.input)
 
 			assertError(t, err, tt.expectError, tt.errorContains)
@@ -1034,6 +1071,7 @@ func Test_parseDecimalOffset(t *testing.T) {
 
 // Test_parseHHMMOffset tests the parseHHMMOffset helper function
 func Test_parseHHMMOffset(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		input           string
@@ -1077,6 +1115,7 @@ func Test_parseHHMMOffset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parseHHMMOffset(tt.input)
 
 			assertError(t, err, tt.expectError, tt.errorContains)
@@ -1089,91 +1128,11 @@ func Test_parseHHMMOffset(t *testing.T) {
 	}
 }
 
-// Test_validateArgs tests the validateArgs function
-func Test_validateArgs(t *testing.T) {
-	tests := []struct {
-		name          string
-		setup         func(cmd *cobra.Command)
-		dateValue     string
-		expectError   bool
-		errorContains string
-	}{
-		{
-			name: "valid args no flags",
-			setup: func(cmd *cobra.Command) {
-				// No flags set
-			},
-			dateValue:   time.Now().Format(time.DateOnly),
-			expectError: false,
-		},
-		{
-			name: "valid date flag",
-			setup: func(cmd *cobra.Command) {
-				_ = cmd.Flags().Set("date", "2024-06-15")
-			},
-			dateValue:   "2024-06-15",
-			expectError: false,
-		},
-		{
-			name: "invalid date format",
-			setup: func(cmd *cobra.Command) {
-				_ = cmd.Flags().Set("date", "invalid-date")
-			},
-			dateValue:     "invalid-date",
-			expectError:   true,
-			errorContains: "invalid date",
-		},
-		{
-			name: "live and date conflict",
-			setup: func(cmd *cobra.Command) {
-				_ = cmd.Flags().Set("live", "true")
-				_ = cmd.Flags().Set("date", "2024-06-15")
-			},
-			dateValue:     "2024-06-15",
-			expectError:   true,
-			errorContains: "mutually exclusive",
-		},
-		{
-			name: "exclude-local flag set",
-			setup: func(cmd *cobra.Command) {
-				_ = cmd.Flags().Set("exclude-local", "true")
-			},
-			dateValue:   time.Now().Format(time.DateOnly),
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save original values
-			originalTimezones := timezones
-			originalDate := date
-			t.Cleanup(func() {
-				timezones = originalTimezones
-				date = originalDate
-			})
-
-			// Reset for each test
-			timezones = []string{"UTC"}
-			date = tt.dateValue
-
-			// Create test command with required flags
-			cmd := &cobra.Command{}
-			cmd.Flags().Bool("live", false, "")
-			cmd.Flags().String("date", time.Now().Format(time.DateOnly), "")
-			cmd.Flags().Bool("exclude-local", false, "")
-
-			tt.setup(cmd)
-
-			err := validateArgs(cmd, nil)
-
-			assertError(t, err, tt.expectError, tt.errorContains)
-		})
-	}
-}
-
 // Test_addLocalTimezone tests the addLocalTimezone function
 func Test_addLocalTimezone(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
 	tests := []struct {
 		name             string
 		initialTimezones []string
@@ -1193,16 +1152,12 @@ func Test_addLocalTimezone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original timezones
-			originalTimezones := timezones
-			t.Cleanup(func() {
-				timezones = originalTimezones
-			})
-
-			timezones = tt.initialTimezones
+			t.Parallel()
+			timezones := make([]string, len(tt.initialTimezones))
+			copy(timezones, tt.initialTimezones)
 			initialLen := len(timezones)
 
-			err := addLocalTimezone()
+			err := addLocalTimezone(&timezones, log)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -1224,21 +1179,18 @@ func Test_addLocalTimezone(t *testing.T) {
 
 // Test_addLocalTimezone_alreadyPresent tests that addLocalTimezone doesn't duplicate
 func Test_addLocalTimezone_alreadyPresent(t *testing.T) {
-	// Save original timezones
-	originalTimezones := timezones
-	t.Cleanup(func() {
-		timezones = originalTimezones
-	})
+	t.Parallel()
+	log := logger.GetLogger()
 
 	loc, err := time.LoadLocation("Local")
 	if err != nil {
 		t.Fatalf("Failed to load local timezone: %v", err)
 	}
 
-	timezones = []string{loc.String(), "UTC"}
+	timezones := []string{loc.String(), "UTC"}
 	initialLen := len(timezones)
 
-	err = addLocalTimezone()
+	err = addLocalTimezone(&timezones, log)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1250,19 +1202,9 @@ func Test_addLocalTimezone_alreadyPresent(t *testing.T) {
 
 // Test_printTimeTable tests the printTimeTable function
 func Test_printTimeTable(t *testing.T) {
-	// Save original values
-	originalDate := date
-	originalTwelveHourEnabled := twelveHourEnabled
-	originalColorEnabled := colorEnabled
-	t.Cleanup(func() {
-		date = originalDate
-		twelveHourEnabled = originalTwelveHourEnabled
-		colorEnabled = originalColorEnabled
-	})
-
-	date = "2024-06-15"
-	twelveHourEnabled = false
-	colorEnabled = false
+	t.Parallel()
+	log := logger.GetLogger()
+	date := "2024-06-15"
 
 	zones := timezoneDetails{
 		makeTimezoneDetail("UTC", 0, false),
@@ -1270,18 +1212,18 @@ func Test_printTimeTable(t *testing.T) {
 	}
 
 	// Test that it doesn't panic with no highlighted hour
-	printTimeTable(zones, colorEnabled, -1)
+	printTimeTable(zones, false, -1, false, date, log)
 
 	// Test with highlighted hour
-	printTimeTable(zones, colorEnabled, 12)
+	printTimeTable(zones, false, 12, false, date, log)
 
 	// Test with color enabled
-	colorEnabled = true
-	printTimeTable(zones, colorEnabled, 12)
+	printTimeTable(zones, true, 12, false, date, log)
 }
 
 // Test_configureColoredTable tests table color configuration
 func Test_configureColoredTable(t *testing.T) {
+	t.Parallel()
 	tw := table.NewWriter()
 	configureColoredTable(tw)
 	// If it doesn't panic, the test passes
@@ -1289,82 +1231,25 @@ func Test_configureColoredTable(t *testing.T) {
 
 // Test_configurePlainTable tests plain table configuration
 func Test_configurePlainTable(t *testing.T) {
+	t.Parallel()
 	tw := table.NewWriter()
 	configurePlainTable(tw)
 	// If it doesn't panic, the test passes
 }
 
-// Test_handleWizardMode tests the handleWizardMode function setup
-func Test_handleWizardMode(t *testing.T) {
-	// Save original timezones
-	originalTimezones := timezones
-	t.Cleanup(func() {
-		timezones = originalTimezones
-	})
-
-	timezones = []string{"UTC"}
-
-	// handleWizardMode calls runWizard which requires a terminal
-	// We can't fully test it in CI, but we can verify it doesn't panic on setup
-	// This test verifies the function signature and basic setup
-}
-
-// Test_runRoot_basic tests the runRoot function with basic input
-func Test_runRoot_basic(t *testing.T) {
-	// Save original values
-	originalTimezones := timezones
-	originalDate := date
-	originalLiveMode := liveMode
-	originalV := v
-	t.Cleanup(func() {
-		timezones = originalTimezones
-		date = originalDate
-		liveMode = originalLiveMode
-		v = originalV
-	})
-
-	// Setup test state
-	timezones = []string{"UTC"}
-	date = "2024-06-15"
-	liveMode = false
-	v = viper.New()
-
-	// Create test command with required flags
-	cmd := &cobra.Command{}
-	cmd.Flags().Bool("wizard", false, "")
-	cmd.Flags().Bool("live", false, "")
-
-	err := runRoot(cmd, nil)
-	if err != nil {
-		t.Errorf("runRoot failed: %v", err)
-	}
-}
-
 // Test_renderTimeTable tests the renderTimeTable function
 func Test_renderTimeTable(t *testing.T) {
-	// Save original values
-	originalTimezones := timezones
-	originalDate := date
-	originalHighlight := highlight
-	originalColorEnabled := colorEnabled
-	t.Cleanup(func() {
-		timezones = originalTimezones
-		date = originalDate
-		highlight = originalHighlight
-		colorEnabled = originalColorEnabled
-	})
-
-	// Setup test state
-	timezones = []string{"UTC", "America/New_York"}
-	date = "2024-06-15"
-	highlight = ""
-	colorEnabled = false
+	t.Parallel()
+	log := logger.GetLogger()
+	timezones := []string{"UTC", "America/New_York"}
+	date := "2024-06-15"
+	highlight := ""
 
 	// Create test command with required flags
 	cmd := &cobra.Command{}
 	cmd.Flags().String("highlight", "", "")
 
-	err := renderTimeTable(cmd)
+	err := renderTimeTable(cmd, log, timezones, date, false, false, highlight)
 	if err != nil {
 		t.Errorf("renderTimeTable failed: %v", err)
 	}
@@ -1372,23 +1257,16 @@ func Test_renderTimeTable(t *testing.T) {
 
 // Test_renderTimeTable_invalidTimezone tests renderTimeTable with invalid timezone
 func Test_renderTimeTable_invalidTimezone(t *testing.T) {
-	// Save original values
-	originalTimezones := timezones
-	originalDate := date
-	t.Cleanup(func() {
-		timezones = originalTimezones
-		date = originalDate
-	})
-
-	// Setup with invalid timezone
-	timezones = []string{"Invalid/Timezone"}
-	date = "2024-06-15"
+	t.Parallel()
+	log := logger.GetLogger()
+	timezones := []string{"Invalid/Timezone"}
+	date := "2024-06-15"
 
 	// Create test command with required flags
 	cmd := &cobra.Command{}
 	cmd.Flags().String("highlight", "", "")
 
-	err := renderTimeTable(cmd)
+	err := renderTimeTable(cmd, log, timezones, date, false, false, "")
 	if err == nil {
 		t.Error("Expected error for invalid timezone")
 	}
@@ -1396,44 +1274,14 @@ func Test_renderTimeTable_invalidTimezone(t *testing.T) {
 
 // Test_clearScreen tests the clearScreen function
 func Test_clearScreen(t *testing.T) {
+	t.Parallel()
 	// Just test that it doesn't panic
 	clearScreen()
 }
 
-// Test_persistentPreRunE tests the persistentPreRunE function
-func Test_persistentPreRunE(t *testing.T) {
-	// Save original viper instance
-	originalV := v
-	t.Cleanup(func() {
-		v = originalV
-	})
-
-	// Create a fresh viper instance
-	v = viper.New()
-
-	// Create a temporary directory for test config
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	configDir := filepath.Join(tempDir, ".config")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		t.Fatalf("Failed to create config directory: %v", err)
-	}
-
-	// Create test command
-	cmd := &cobra.Command{}
-	cmd.Flags().Bool("color", false, "")
-	cmd.Flags().StringSlice("timezone", nil, "")
-	cmd.Flags().Bool("twelve-hour", false, "")
-
-	err := persistentPreRunE(cmd, nil)
-	if err != nil {
-		t.Errorf("persistentPreRunE failed: %v", err)
-	}
-}
-
 // Test_completeTimezone tests the timezone completion function
 func Test_completeTimezone(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		toComplete  string
@@ -1453,6 +1301,7 @@ func Test_completeTimezone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			completions, directive := completeTimezone(nil, nil, tt.toComplete)
 
 			if directive != cobra.ShellCompDirectiveDefault {
@@ -1493,20 +1342,8 @@ func Test_getConfigPath(t *testing.T) {
 
 // Test_saveUserPreferences tests the saveUserPreferences function
 func Test_saveUserPreferences(t *testing.T) {
-	// Save original viper instance
-	originalV := v
-	originalTimezones := timezones
-	originalColorEnabled := colorEnabled
-	originalTwelveHourEnabled := twelveHourEnabled
-	t.Cleanup(func() {
-		v = originalV
-		timezones = originalTimezones
-		colorEnabled = originalColorEnabled
-		twelveHourEnabled = originalTwelveHourEnabled
-	})
-
-	// Create a fresh viper instance
-	v = viper.New()
+	log := logger.GetLogger()
+	v := viper.New()
 
 	// Create a temporary directory for test config
 	tempDir := t.TempDir()
@@ -1522,12 +1359,12 @@ func Test_saveUserPreferences(t *testing.T) {
 	v.SetConfigType("yaml")
 
 	// Set test values
-	timezones = []string{"UTC", "America/New_York"}
-	colorEnabled = true
-	twelveHourEnabled = false
+	timezones := []string{"UTC", "America/New_York"}
+	colorEnabled := true
+	twelveHourEnabled := false
 
 	// Call saveUserPreferences
-	saveUserPreferences()
+	saveUserPreferences(v, log, colorEnabled, twelveHourEnabled, timezones)
 
 	// Verify values were set in viper
 	if !v.GetBool("color") {
@@ -1539,21 +1376,378 @@ func Test_saveUserPreferences(t *testing.T) {
 	}
 }
 
-// Test_Execute tests the Execute function
-func Test_Execute(t *testing.T) {
-	// Save original values
-	originalTimezones := timezones
-	originalDate := date
-	t.Cleanup(func() {
-		timezones = originalTimezones
-		date = originalDate
-	})
+// Test_NewRootCmd_Args tests the Args validation in NewRootCmd
+func Test_NewRootCmd_Args(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		setupCmd      func(*cobra.Command)
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "valid args no flags",
+			setupCmd: func(cmd *cobra.Command) {
+				// No flags set
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid date format",
+			setupCmd: func(cmd *cobra.Command) {
+				_ = cmd.Flags().Set("date", "not-a-date")
+			},
+			expectError:   true,
+			errorContains: "invalid date",
+		},
+		{
+			name: "valid date format",
+			setupCmd: func(cmd *cobra.Command) {
+				_ = cmd.Flags().Set("date", "2024-06-15")
+			},
+			expectError: false,
+		},
+		{
+			name: "exclude-local flag",
+			setupCmd: func(cmd *cobra.Command) {
+				_ = cmd.Flags().Set("exclude-local", "true")
+			},
+			expectError: false,
+		},
+	}
 
-	// Setup minimal state
-	timezones = []string{"UTC"}
-	date = time.Now().Format(time.DateOnly)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewRootCmd()
+			tt.setupCmd(cmd)
 
-	// Execute should not panic with basic setup
-	// Note: We can't fully test Execute() in unit tests as it calls os.Exit
-	// This is just to verify it doesn't panic on import
+			err := cmd.Args(cmd, nil)
+
+			assertError(t, err, tt.expectError, tt.errorContains)
+		})
+	}
+}
+
+// Test_NewRootCmd_RunE tests the RunE function of the root command
+func Test_NewRootCmd_RunE(t *testing.T) {
+	// Create a temporary directory for test config
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	configDir := filepath.Join(tempDir, ".config")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config directory: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		setupCmd      func(*cobra.Command)
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "normal execution with valid timezone",
+			setupCmd: func(cmd *cobra.Command) {
+				_ = cmd.Flags().Set("timezone", "UTC")
+				_ = cmd.Flags().Set("exclude-local", "true")
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid timezone returns error",
+			setupCmd: func(cmd *cobra.Command) {
+				_ = cmd.Flags().Set("timezone", "Invalid/Timezone")
+				_ = cmd.Flags().Set("exclude-local", "true")
+			},
+			expectError:   true,
+			errorContains: "invalid timezone",
+		},
+		{
+			name: "invalid highlight with changed flag returns error",
+			setupCmd: func(cmd *cobra.Command) {
+				_ = cmd.Flags().Set("timezone", "UTC")
+				_ = cmd.Flags().Set("exclude-local", "true")
+				_ = cmd.Flags().Set("highlight", "invalid")
+			},
+			expectError:   true,
+			errorContains: "invalid highlight",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := NewRootCmd()
+			tt.setupCmd(cmd)
+
+			// Initialize config first
+			_ = cmd.PersistentPreRunE(cmd, nil)
+
+			// Run Args validation
+			if err := cmd.Args(cmd, nil); err != nil {
+				if !tt.expectError {
+					t.Fatalf("Args validation failed: %v", err)
+				}
+				return
+			}
+
+			// Run main command
+			err := cmd.RunE(cmd, nil)
+
+			assertError(t, err, tt.expectError, tt.errorContains)
+		})
+	}
+}
+
+// Test_parseOffset_edgeCases tests edge cases for parseOffset
+func Test_parseOffset_edgeCases(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		input         string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:          "empty string",
+			input:         "",
+			expectError:   true,
+			errorContains: "empty highlight value",
+		},
+		{
+			name:          "empty offset part after plus",
+			input:         "15+",
+			expectError:   true,
+			errorContains: "invalid format",
+		},
+		{
+			name:          "invalid hour string",
+			input:         "abc+5",
+			expectError:   true,
+			errorContains: "invalid hour",
+		},
+		{
+			name:          "invalid offset string",
+			input:         "15+abc",
+			expectError:   true,
+			errorContains: "invalid offset",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := parseOffset(tt.input)
+
+			assertError(t, err, tt.expectError, tt.errorContains)
+		})
+	}
+}
+
+// Test_parseColonOffset_invalidMinutesRange tests invalid minute values
+func Test_parseColonOffset_invalidMinutesRange(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		input         string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:          "minutes too high",
+			input:         "05:60",
+			expectError:   true,
+			errorContains: "offset minutes must be between 0 and 59",
+		},
+		{
+			name:          "minutes negative via invalid parse",
+			input:         "05:-30",
+			expectError:   true,
+			errorContains: "offset minutes must be between 0 and 59",
+		},
+		{
+			name:          "too many colons",
+			input:         "05:30:45",
+			expectError:   true,
+			errorContains: "invalid offset",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseColonOffset(tt.input)
+
+			assertError(t, err, tt.expectError, tt.errorContains)
+		})
+	}
+}
+
+// Test_parseHHMMOffset_invalidMinutesRange tests invalid minute values
+func Test_parseHHMMOffset_invalidMinutesRange(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		input         string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:          "minutes too high",
+			input:         "0560",
+			expectError:   true,
+			errorContains: "offset minutes must be between 0 and 59",
+		},
+		{
+			name:          "minutes 99",
+			input:         "0599",
+			expectError:   true,
+			errorContains: "offset minutes must be between 0 and 59",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseHHMMOffset(tt.input)
+
+			assertError(t, err, tt.expectError, tt.errorContains)
+		})
+	}
+}
+
+// Test_parseOffsetMinutes tests parseOffsetMinutes function
+func Test_parseOffsetMinutes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		input           string
+		expectedMinutes int
+		expectError     bool
+		errorContains   string
+	}{
+		{
+			name:            "simple hours",
+			input:           "5",
+			expectedMinutes: 300,
+			expectError:     false,
+		},
+		{
+			name:            "colon format",
+			input:           "5:30",
+			expectedMinutes: 330,
+			expectError:     false,
+		},
+		{
+			name:            "decimal format",
+			input:           "5.5",
+			expectedMinutes: 330,
+			expectError:     false,
+		},
+		{
+			name:            "HHMM format",
+			input:           "0530",
+			expectedMinutes: 330,
+			expectError:     false,
+		},
+		{
+			name:          "invalid hours string",
+			input:         "abc",
+			expectError:   true,
+			errorContains: "invalid offset hours",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := parseOffsetMinutes(tt.input)
+
+			assertError(t, err, tt.expectError, tt.errorContains)
+			if tt.expectError {
+				return
+			}
+
+			assertEqual(t, result, tt.expectedMinutes, "Expected %d minutes, got %d", tt.expectedMinutes, result)
+		})
+	}
+}
+
+// Test_bindFlags_arrayFlag tests bindFlags with array config values
+func Test_bindFlags_arrayFlag(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
+	// Create a test command with an array flag
+	cmd := &cobra.Command{Use: "test"}
+	var timezones []string
+	cmd.Flags().StringArrayVar(&timezones, "timezone", []string{}, "timezone flag")
+
+	// Create a viper instance with an array value
+	testViper := viper.New()
+	testViper.Set("timezone", []any{"UTC", "America/New_York"})
+
+	// Bind the flags
+	bindFlags(cmd, testViper, log)
+
+	// Check that the timezone flag was set with array values
+	tzFlag := cmd.Flags().Lookup("timezone")
+	if tzFlag == nil {
+		t.Fatal("timezone flag not found")
+	}
+}
+
+// Test_renderTimeTable_invalidHighlight tests renderTimeTable with invalid highlight
+func Test_renderTimeTable_invalidHighlight(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+	timezones := []string{"UTC"}
+	date := "2024-06-15"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("highlight", "", "")
+	_ = cmd.Flags().Set("highlight", "25+0") // Invalid hour
+
+	err := renderTimeTable(cmd, log, timezones, date, false, false, "25+0")
+	if err == nil {
+		t.Error("Expected error for invalid highlight hour")
+	}
+}
+
+// Test_printTimeTable_withCurrentDate tests printTimeTable with current date
+func Test_printTimeTable_withCurrentDate(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+	date := time.Now().Format(time.DateOnly)
+
+	zones := timezoneDetails{
+		makeTimezoneDetail("UTC", 0, false),
+	}
+
+	// Test with current date (should show current time in title)
+	printTimeTable(zones, false, -1, false, date, log)
+
+	// Test with twelve hour format
+	printTimeTable(zones, false, -1, true, date, log)
+}
+
+// Test_getZoneInfo_halfHourOffset tests getZoneInfo with half-hour offset timezone
+func Test_getZoneInfo_halfHourOffset(t *testing.T) {
+	t.Parallel()
+	log := logger.GetLogger()
+
+	// Asia/Kolkata has a +5:30 offset
+	zone, err := getZoneInfo("Asia/Kolkata", "2024-06-15", log)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !zone.halfHourOffset {
+		t.Error("Expected halfHourOffset to be true for Asia/Kolkata")
+	}
+
+	// 330 minutes = 5 hours 30 minutes
+	if zone.offsetMinutes != 330 {
+		t.Errorf("Expected offset 330, got %d", zone.offsetMinutes)
+	}
 }

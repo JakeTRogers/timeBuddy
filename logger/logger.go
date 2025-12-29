@@ -28,6 +28,7 @@ var sharedLogger zerolog.Logger
 func init() {
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 	zerolog.TimeFieldFormat = time.RFC3339
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 
 	var output io.Writer = zerolog.ConsoleWriter{
 		Out:        os.Stderr,
@@ -35,7 +36,6 @@ func init() {
 	}
 
 	sharedLogger = zerolog.New(output).
-		Level(zerolog.ErrorLevel).
 		With().
 		Timestamp().
 		Logger()
@@ -73,5 +73,12 @@ func SetLogLevel(verboseCount int) {
 			level = zerolog.ErrorLevel
 		}
 	}
-	sharedLogger = sharedLogger.Level(level)
+	zerolog.SetGlobalLevel(level)
+}
+
+// Disable disables all logging output.
+// This is useful for interactive modes (e.g., TUI) where log output
+// would interfere with the display.
+func Disable() {
+	zerolog.SetGlobalLevel(zerolog.Disabled)
 }
