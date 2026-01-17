@@ -60,7 +60,7 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd := &cobra.Command{
 		Use:     "timeBuddy",
-		Version: "v2.0.2",
+		Version: "v2.0.3",
 		Short:   "CLI version of World Time Buddy",
 		Long: `timeBuddy is a Command Line Interface (CLI) tool designed to display the current time across multiple time zones. This
 tool is particularly useful for scheduling meetings with participants in various time zones. By default, timeBuddy
