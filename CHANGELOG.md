@@ -1,3 +1,9 @@
+## v2.0.3 (2026-01-16)
+
+### Fix
+
+- **deps**: bump github.com/jedib0t/go-pretty/v6 from 6.7.7 to 6.7.8
+
 ## v2.0.2 (2025-12-29)
 
 ### Refactor
