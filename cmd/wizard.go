@@ -997,7 +997,7 @@ func (m wizardModel) renderTreeNode(node *treeNode, maxWidth int) string {
 			indicator = partialCheckStyle.Render(fmt.Sprintf(" [%d/%d]", selectedCount, totalCount))
 		}
 
-		b.WriteString(fmt.Sprintf("%s %s%s", expandIcon, node.name, indicator))
+		fmt.Fprintf(&b, "%s %s%s", expandIcon, node.name, indicator)
 	} else {
 		// Location node
 		checkBox := "[ ]"
@@ -1012,7 +1012,7 @@ func (m wizardModel) renderTreeNode(node *treeNode, maxWidth int) string {
 			displayName = displayName[:maxLen-1] + "…"
 		}
 
-		b.WriteString(fmt.Sprintf("  %s %s", checkBox, displayName))
+		fmt.Fprintf(&b, "  %s %s", checkBox, displayName)
 	}
 
 	return b.String()

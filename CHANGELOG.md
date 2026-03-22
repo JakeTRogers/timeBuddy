@@ -1,3 +1,13 @@
+## v2.0.4 (2026-03-22)
+
+### Fix
+
+- **deps**: bump github.com/charmbracelet/bubbles from 0.21.0 to 1.0.0
+
+### Refactor
+
+- **wizard**: replace b.WriteString(fmt.Sprintf()) with fmt.Fprintf for efficiency
+
 ## v2.0.3 (2026-01-16)
 
 ### Fix
