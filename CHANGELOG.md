@@ -1,3 +1,10 @@
+## v2.0.5 (2026-06-21)
+
+### Fix
+
+- **deps**: bump github.com/jedib0t/go-pretty/v6 from 6.7.8 to 6.8.1
+- **deps**: bump github.com/rs/zerolog from 1.34.0 to 1.35.1
+
 ## v2.0.4 (2026-03-22)
 
 ### Fix
