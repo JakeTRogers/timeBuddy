@@ -58,10 +58,6 @@ func assertEqual[T comparable](t *testing.T, got, want T, format string, args ..
 	t.Errorf("expected %v, got %v", want, got)
 }
 
-func ptr[T any](value T) *T {
-	return &value
-}
-
 func toStrings(values []any) []string {
 	result := make([]string, len(values))
 	for i, v := range values {
@@ -215,7 +211,7 @@ func Test_parseHighlightFlag(t *testing.T) {
 			name:          "empty highlight",
 			highlight:     "",
 			expectError:   false,
-			expectedIndex: ptr(-1),
+			expectedIndex: new(-1),
 		},
 		{
 			name:           "valid hour with positive offset",

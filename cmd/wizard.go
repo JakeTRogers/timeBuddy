@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -292,11 +293,8 @@ func (m *wizardModel) getNodeFromFlatIndex(flatIdx int) *treeNode {
 func countSelectedInArea(area *treeNode, selected []string) int {
 	count := 0
 	for _, child := range area.children {
-		for _, tz := range selected {
-			if child.fullPath == tz {
-				count++
-				break
-			}
+		if slices.Contains(selected, child.fullPath) {
+			count++
 		}
 	}
 	return count
@@ -702,12 +700,7 @@ func (m *wizardModel) removeFromSelected(tz string) {
 
 // isInSelected checks if a timezone is in the selected list
 func (m *wizardModel) isInSelected(tz string) bool {
-	for _, s := range m.selected {
-		if s == tz {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.selected, tz)
 }
 
 // View implements tea.Model
@@ -733,10 +726,7 @@ func (m wizardModel) View() string {
 	}
 
 	// Calculate content height (leave room for title, help, and search)
-	contentHeight := m.height - 8
-	if contentHeight < 10 {
-		contentHeight = 10
-	}
+	contentHeight := max(m.height-8, 10)
 
 	// Render left pane (selected timezones)
 	leftContent := m.renderSelectedPane(leftWidth-4, contentHeight)
@@ -793,19 +783,13 @@ func (m wizardModel) renderSelectedPane(width, height int) string {
 
 	// Calculate visible range for scrolling
 	startIdx := 0
-	visibleCount := height - 2 // Account for header
-	if visibleCount < 1 {
-		visibleCount = 1
-	}
+	visibleCount := max(height-2, 1) // Account for header
 
 	if m.selectedCursor >= visibleCount {
 		startIdx = m.selectedCursor - visibleCount + 1
 	}
 
-	endIdx := startIdx + visibleCount
-	if endIdx > len(m.selected) {
-		endIdx = len(m.selected)
-	}
+	endIdx := min(startIdx+visibleCount, len(m.selected))
 
 	for i := startIdx; i < endIdx; i++ {
 		tz := m.selected[i]
@@ -850,19 +834,13 @@ func (m wizardModel) renderAvailablePane(width, height int) string {
 
 	// Calculate visible range for scrolling
 	startIdx := 0
-	visibleCount := height - 2
-	if visibleCount < 1 {
-		visibleCount = 1
-	}
+	visibleCount := max(height-2, 1)
 
 	if m.treeCursor >= visibleCount {
 		startIdx = m.treeCursor - visibleCount + 1
 	}
 
-	endIdx := startIdx + visibleCount
-	if endIdx > len(m.flatTree) {
-		endIdx = len(m.flatTree)
-	}
+	endIdx := min(startIdx+visibleCount, len(m.flatTree))
 
 	for i := startIdx; i < endIdx; i++ {
 		node := m.getNodeFromFlatIndex(i)
@@ -903,19 +881,13 @@ func (m wizardModel) renderSearchResults(width, height int) string {
 
 	// Calculate visible range for scrolling
 	startIdx := 0
-	visibleCount := height - 2
-	if visibleCount < 1 {
-		visibleCount = 1
-	}
+	visibleCount := max(height-2, 1)
 
 	if m.searchCursor >= visibleCount {
 		startIdx = m.searchCursor - visibleCount + 1
 	}
 
-	endIdx := startIdx + visibleCount
-	if endIdx > len(m.searchResults) {
-		endIdx = len(m.searchResults)
-	}
+	endIdx := min(startIdx+visibleCount, len(m.searchResults))
 
 	for i := startIdx; i < endIdx; i++ {
 		match := m.searchResults[i]
