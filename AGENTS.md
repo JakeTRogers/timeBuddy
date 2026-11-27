@@ -24,6 +24,6 @@ CLI tool for comparing times across multiple time zones, written in Go.
 ## Gotchas
 
 - The pre-commit coverage hook fails if total test coverage drops below 85%.
-- The version string lives in `cmd/root.go`; CI (`verBumpChkr.yml`) fails any PR that does not bump it. It is managed by `cz bump` (`version_files` in `.cz.yaml`).
+- The version string lives in `cmd/root.go`; CI (`verBumpChkr.yml`) fails a PR whose commits call for a release (`feat`, `fix`, `refactor`, `perf`, breaking) without a matching bump, or that bumps it when none do. It is managed by `cz bump` (`version_files` in `.cz.yaml`).
 - `time/tzdata` is embedded via blank import, so tests pass without system timezone data.
 - Releases are cut by GoReleaser when a `v*` tag is pushed — never build release artifacts by hand.
