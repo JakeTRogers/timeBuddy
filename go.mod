@@ -1,6 +1,6 @@
 module github.com/JakeTRogers/timeBuddy
 
-go 1.25
+go 1.27
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
