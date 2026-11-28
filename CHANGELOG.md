@@ -1,3 +1,9 @@
+## v2.0.7 (2026-11-27)
+
+### Refactor
+
+- adopt modern Go idioms after the 1.27 upgrade
+
 ## v2.0.6 (2026-09-07)
 
 ### Fix
