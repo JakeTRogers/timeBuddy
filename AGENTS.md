@@ -27,3 +27,17 @@ CLI tool for comparing times across multiple time zones, written in Go.
 - The version string lives in `cmd/root.go`; CI (`verBumpChkr.yml`) fails a PR whose commits call for a release (`feat`, `fix`, `refactor`, `perf`, breaking) without a matching bump, or that bumps it when none do. It is managed by `cz bump` (`version_files` in `.cz.yaml`).
 - `time/tzdata` is embedded via blank import, so tests pass without system timezone data.
 - Releases are cut by GoReleaser when a `v*` tag is pushed — never build release artifacts by hand.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on JakeTRogers/timeBuddy, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels are used as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root (created when first needed). See `docs/agents/domain.md`.
