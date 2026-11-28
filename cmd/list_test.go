@@ -25,10 +25,8 @@ func assertLocationInArea(t *testing.T, areas map[string][]string, area, locatio
 		t.Errorf("Area '%s' does not exist in result", area)
 		return
 	}
-	for _, loc := range locations {
-		if loc == location {
-			return
-		}
+	if slices.Contains(locations, location) {
+		return
 	}
 	t.Errorf("Expected '%s' to be in %s locations", location, area)
 }
